@@ -4,7 +4,10 @@ import cors from 'cors';
 import { spawn } from 'child_process';
 import path from 'path';
 import fs from 'fs';
-import { createServer as createViteServer } from 'vite';
+import { fileURLToPath } from 'url';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 const app = express();
 const PORT = 3000;
@@ -153,13 +156,15 @@ app.get('/api/download/:filename', (req, res) => {
 // Vite middleware setup
 async function startServer() {
   if (process.env.NODE_ENV !== 'production') {
+    const viteModule = await import('vite');
+    const createViteServer = viteModule.createServer;
     const vite = await createViteServer({
       server: { middlewareMode: true },
       appType: 'spa',
     });
     app.use(vite.middlewares);
   } else {
-    const distPath = path.join(process.cwd(), 'dist');
+    const distPath = path.join(__dirname, 'dist');
     app.use(express.static(distPath));
     app.get('*', (req, res) => {
       res.sendFile(path.join(distPath, 'index.html'));
