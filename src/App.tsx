@@ -35,11 +35,18 @@ function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
 
-declare global {
-  interface Window {
-    require?: any;
+const getIpcRenderer = () => {
+  if (typeof window !== 'undefined' && window.require) {
+    try {
+      const electron = window.require('electron');
+      return electron.ipcRenderer;
+    } catch (e) {
+      console.warn('Electron IPC not available:', e);
+      return null;
+    }
   }
-}
+  return null;
+};
 
 export default function App() {
   // State
@@ -64,24 +71,24 @@ export default function App() {
 
   // Fetch App Settings
   useEffect(() => {
-    if (window.require) {
-      const { ipcRenderer } = window.require('electron');
+    const ipcRenderer = getIpcRenderer();
+    if (ipcRenderer) {
       ipcRenderer.invoke('get-settings')
-        .then(data => {
+        .then((data: any) => {
           setAppSettings(data);
           if (data.themeId) {
             const theme = THEMES.find(t => t.id === data.themeId);
             if (theme) setActiveTheme(theme);
           }
         })
-        .catch(err => console.error('Failed to load settings', err));
+        .catch((err: any) => console.error('Failed to load settings', err));
     }
   }, []);
 
   // IPC Listener for Settings Menu
   useEffect(() => {
-    if (window.require) {
-      const { ipcRenderer } = window.require('electron');
+    const ipcRenderer = getIpcRenderer();
+    if (ipcRenderer) {
       const handleOpenSettings = () => setIsAppSettingsOpen(true);
       ipcRenderer.on('open-settings', handleOpenSettings);
       return () => {
@@ -93,8 +100,8 @@ export default function App() {
   // Save App Settings
   const saveAppSettings = async () => {
     try {
-      if (window.require) {
-        const { ipcRenderer } = window.require('electron');
+      const ipcRenderer = getIpcRenderer();
+      if (ipcRenderer) {
         await ipcRenderer.invoke('save-settings', appSettings);
       }
       setIsAppSettingsOpen(false);
@@ -274,13 +281,12 @@ export default function App() {
       addLog(`Processing ${job.fileName} to ${job.type}...`, 'info');
 
       await new Promise<void>((resolve) => {
-        if (!window.require) {
+        const ipcRenderer = getIpcRenderer();
+        if (!ipcRenderer) {
           addLog('Electron IPC not available', 'error');
           resolve();
           return;
         }
-        
-        const { ipcRenderer } = window.require('electron');
         
         const handleJobEvent = (event: any, { type, data }: any) => {
           if (type === 'log') {
@@ -450,8 +456,8 @@ export default function App() {
                     <button
                       className="w-full text-left px-4 py-2 hover:bg-opacity-10 hover:bg-black"
                       onClick={() => {
-                        if (window.require) {
-                          const { ipcRenderer } = window.require('electron');
+                        const ipcRenderer = getIpcRenderer();
+                        if (ipcRenderer) {
                           ipcRenderer.send('quit-app');
                         }
                         setShowFileMenu(false);
@@ -532,10 +538,10 @@ export default function App() {
                           setActiveTheme(t);
                           setAppSettings(prev => ({ ...prev, themeId: t.id }));
                           // Save theme immediately
-                          if (window.require) {
-                            const { ipcRenderer } = window.require('electron');
+                          const ipcRenderer = getIpcRenderer();
+                          if (ipcRenderer) {
                             ipcRenderer.invoke('save-settings', { ...appSettings, themeId: t.id })
-                              .catch(err => console.error('Failed to save theme', err));
+                              .catch((err: any) => console.error('Failed to save theme', err));
                           }
                           setShowThemeMenu(false);
                         }}
@@ -1040,8 +1046,8 @@ export default function App() {
                     />
                     <button
                       onClick={async () => {
-                        if (window.require) {
-                          const { ipcRenderer } = window.require('electron');
+                        const ipcRenderer = getIpcRenderer();
+                        if (ipcRenderer) {
                           const selectedPath = await ipcRenderer.invoke('dialog:openDirectory');
                           if (selectedPath) {
                             setAppSettings(prev => ({ ...prev, outputDirectory: selectedPath }));
