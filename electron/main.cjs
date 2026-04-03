@@ -1,8 +1,5 @@
 const { app, BrowserWindow } = require('electron');
 const path = require('path');
-const { spawn } = require('child_process');
-
-let serverProcess;
 
 function createWindow() {
   const win = new BrowserWindow({
@@ -24,24 +21,20 @@ app.whenReady().then(() => {
   if (isDev) {
     createWindow();
   } else {
-    // In production, start the packaged server
-    const serverPath = path.join(__dirname, '..', 'server.js');
+    // In production, run the server directly in the main process
+    process.env.NODE_ENV = 'production';
+    const serverPath = path.join(__dirname, '..', 'server.cjs');
     
-    // Set NODE_ENV to production so the server serves static files
-    const env = Object.create(process.env);
-    env.NODE_ENV = 'production';
-    
-    serverProcess = spawn('node', [serverPath], { env, stdio: 'inherit' });
-    
-    // Wait a second for Express to start
-    setTimeout(createWindow, 1000);
+    try {
+      require(serverPath);
+      // Wait a second for Express to start
+      setTimeout(createWindow, 1000);
+    } catch (err) {
+      console.error('Failed to start server:', err);
+    }
   }
 });
 
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit();
-});
-
-app.on('quit', () => {
-  if (serverProcess) serverProcess.kill();
 });

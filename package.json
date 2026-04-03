@@ -9,10 +9,10 @@
   "scripts": {
     "dev": "tsx server.ts",
     "dev:electron": "concurrently \"tsx server.ts\" \"wait-on http://localhost:3000 && electron .\"",
-    "build": "vite build && esbuild server.ts --bundle --platform=node --format=esm --packages=external --outfile=server.js",
+    "build": "vite build && esbuild server.ts --bundle --platform=node --format=cjs --packages=external --outfile=server.cjs",
     "build:app": "npm run build && electron-builder",
     "preview": "vite preview",
-    "clean": "rm -rf dist release server.js",
+    "clean": "rm -rf dist release server.js server.cjs",
     "lint": "tsc --noEmit"
   },
   "build": {
@@ -23,7 +23,7 @@
     },
     "files": [
       "dist/**/*",
-      "server.js",
+      "server.cjs",
       "electron/main.cjs",
       "package.json"
     ],
