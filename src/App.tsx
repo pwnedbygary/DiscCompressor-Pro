@@ -48,6 +48,20 @@ const getIpcRenderer = () => {
   return null;
 };
 
+const getFilePath = (file: File): string => {
+  if (typeof window !== 'undefined' && window.require) {
+    try {
+      const electron = window.require('electron');
+      if (electron.webUtils && electron.webUtils.getPathForFile) {
+        return electron.webUtils.getPathForFile(file);
+      }
+    } catch (e) {
+      console.warn('Failed to get webUtils:', e);
+    }
+  }
+  return (file as any).path || '';
+};
+
 export default function App() {
   // State
   const [jobs, setJobs] = useState<Job[]>([]);
@@ -173,7 +187,7 @@ export default function App() {
         },
         addedAt: Date.now(),
         file: file,
-        inputPath: (file as any).path
+        inputPath: getFilePath(file)
       };
     });
 
@@ -271,6 +285,31 @@ export default function App() {
 
     // 1. Process each job sequentially
     for (const job of pendingJobs) {
+      const ipcRenderer = getIpcRenderer();
+      
+      if (!ipcRenderer) {
+        // Mock processing for web preview
+        addLog(`[Web Preview] Simulating processing for ${job.fileName}...`, 'info');
+        setJobs(prev => prev.map(j => j.id === job.id ? { ...j, status: 'Processing' } : j));
+        
+        await new Promise<void>((resolve) => {
+          let progress = 0;
+          const interval = setInterval(() => {
+            progress += Math.random() * 15;
+            if (progress >= 100) {
+              progress = 100;
+              clearInterval(interval);
+              setJobs(prev => prev.map(j => j.id === job.id ? { ...j, status: 'Completed', progress: 100 } : j));
+              addLog(`[Web Preview] Simulated completion for ${job.fileName}`, 'success');
+              resolve();
+            } else {
+              setJobs(prev => prev.map(j => j.id === job.id ? { ...j, progress } : j));
+            }
+          }, 500);
+        });
+        continue;
+      }
+
       if (!job.inputPath) {
         addLog(`Skipping ${job.fileName}: Local file path not found. Please run the desktop app.`, 'error');
         setJobs(prev => prev.map(j => j.id === job.id ? { ...j, status: 'Error', error: 'Missing local path' } : j));
@@ -281,13 +320,6 @@ export default function App() {
       addLog(`Processing ${job.fileName} to ${job.type}...`, 'info');
 
       await new Promise<void>((resolve) => {
-        const ipcRenderer = getIpcRenderer();
-        if (!ipcRenderer) {
-          addLog('Electron IPC not available', 'error');
-          resolve();
-          return;
-        }
-        
         const handleJobEvent = (event: any, { type, data }: any) => {
           if (type === 'log') {
             addLog(data.message, data.level);
@@ -1052,6 +1084,9 @@ export default function App() {
                           if (selectedPath) {
                             setAppSettings(prev => ({ ...prev, outputDirectory: selectedPath }));
                           }
+                        } else {
+                          addLog('[Web Preview] Directory selection is only available in the desktop app.', 'info');
+                          setAppSettings(prev => ({ ...prev, outputDirectory: '/mock/output/directory' }));
                         }
                       }}
                       className="px-4 py-2 rounded text-sm font-medium border hover:bg-black hover:bg-opacity-10"
