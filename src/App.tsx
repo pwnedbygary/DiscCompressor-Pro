@@ -64,16 +64,18 @@ export default function App() {
 
   // Fetch App Settings
   useEffect(() => {
-    fetch('/api/settings')
-      .then(res => res.json())
-      .then(data => {
-        setAppSettings(data);
-        if (data.themeId) {
-          const theme = THEMES.find(t => t.id === data.themeId);
-          if (theme) setActiveTheme(theme);
-        }
-      })
-      .catch(err => console.error('Failed to load settings', err));
+    if (window.require) {
+      const { ipcRenderer } = window.require('electron');
+      ipcRenderer.invoke('get-settings')
+        .then(data => {
+          setAppSettings(data);
+          if (data.themeId) {
+            const theme = THEMES.find(t => t.id === data.themeId);
+            if (theme) setActiveTheme(theme);
+          }
+        })
+        .catch(err => console.error('Failed to load settings', err));
+    }
   }, []);
 
   // IPC Listener for Settings Menu
@@ -91,11 +93,10 @@ export default function App() {
   // Save App Settings
   const saveAppSettings = async () => {
     try {
-      await fetch('/api/settings', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(appSettings)
-      });
+      if (window.require) {
+        const { ipcRenderer } = window.require('electron');
+        await ipcRenderer.invoke('save-settings', appSettings);
+      }
       setIsAppSettingsOpen(false);
       addLog('Application settings saved', 'success');
     } catch (err) {
@@ -273,47 +274,42 @@ export default function App() {
       addLog(`Processing ${job.fileName} to ${job.type}...`, 'info');
 
       await new Promise<void>((resolve) => {
-        const eventSource = new EventSource(`/api/events/${job.id}`);
+        if (!window.require) {
+          addLog('Electron IPC not available', 'error');
+          resolve();
+          return;
+        }
         
-        eventSource.addEventListener('log', (e: Event) => {
-          const data = JSON.parse((e as MessageEvent).data);
-          addLog(data.message, data.level);
-        });
+        const { ipcRenderer } = window.require('electron');
+        
+        const handleJobEvent = (event: any, { type, data }: any) => {
+          if (type === 'log') {
+            addLog(data.message, data.level);
+          } else if (type === 'progress') {
+            setJobs(prev => prev.map(j => j.id === job.id ? { ...j, progress: data.progress } : j));
+          } else if (type === 'complete') {
+            setJobs(prev => prev.map(j => j.id === job.id ? { ...j, status: 'Completed', progress: 100, downloadUrl: data.outputPath } : j));
+            ipcRenderer.removeListener(`job-event-${job.id}`, handleJobEvent);
+            resolve();
+          } else if (type === 'error') {
+            setJobs(prev => prev.map(j => j.id === job.id ? { ...j, status: 'Error', error: data.message } : j));
+            ipcRenderer.removeListener(`job-event-${job.id}`, handleJobEvent);
+            resolve();
+          }
+        };
 
-        eventSource.addEventListener('progress', (e: Event) => {
-          const data = JSON.parse((e as MessageEvent).data);
-          setJobs(prev => prev.map(j => j.id === job.id ? { ...j, progress: data.progress } : j));
-        });
+        ipcRenderer.on(`job-event-${job.id}`, handleJobEvent);
 
-        eventSource.addEventListener('complete', (e: Event) => {
-          const data = JSON.parse((e as MessageEvent).data);
-          setJobs(prev => prev.map(j => j.id === job.id ? { ...j, status: 'Completed', progress: 100, downloadUrl: data.downloadUrl } : j));
-          eventSource.close();
-          resolve();
-        });
-
-        eventSource.addEventListener('error', (e: Event) => {
-          const data = JSON.parse((e as MessageEvent).data);
-          setJobs(prev => prev.map(j => j.id === job.id ? { ...j, status: 'Error', error: data.message } : j));
-          eventSource.close();
-          resolve();
-        });
-
-        // Start the process
-        fetch('/api/process', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            jobId: job.id,
-            fileName: job.fileName,
-            type: job.type,
-            settings: job.settings,
-            inputPath: job.inputPath
-          }),
-        }).catch(err => {
+        ipcRenderer.invoke('process-file', {
+          jobId: job.id,
+          fileName: job.fileName,
+          type: job.type,
+          settings: job.settings,
+          inputPath: job.inputPath
+        }).catch((err: any) => {
           addLog(`Failed to start process: ${err.message}`, 'error');
           setJobs(prev => prev.map(j => j.id === job.id ? { ...j, status: 'Error' } : j));
-          eventSource.close();
+          ipcRenderer.removeListener(`job-event-${job.id}`, handleJobEvent);
           resolve();
         });
       });
@@ -431,7 +427,11 @@ export default function App() {
             <div className="relative">
               <button 
                 className="hover:opacity-70"
-                onClick={() => setShowFileMenu(!showFileMenu)}
+                onClick={() => {
+                  setShowFileMenu(!showFileMenu);
+                  setShowEditMenu(false);
+                  setShowThemeMenu(false);
+                }}
               >
                 File
               </button>
@@ -467,7 +467,11 @@ export default function App() {
             <div className="relative">
               <button 
                 className="hover:opacity-70"
-                onClick={() => setShowEditMenu(!showEditMenu)}
+                onClick={() => {
+                  setShowEditMenu(!showEditMenu);
+                  setShowFileMenu(false);
+                  setShowThemeMenu(false);
+                }}
               >
                 Edit
               </button>
@@ -500,7 +504,11 @@ export default function App() {
             <div className="relative">
               <button 
                 className="hover:opacity-70 flex items-center gap-1"
-                onClick={() => setShowThemeMenu(!showThemeMenu)}
+                onClick={() => {
+                  setShowThemeMenu(!showThemeMenu);
+                  setShowFileMenu(false);
+                  setShowEditMenu(false);
+                }}
               >
                 Themes <ChevronDown className="w-3 h-3" />
               </button>
@@ -524,11 +532,11 @@ export default function App() {
                           setActiveTheme(t);
                           setAppSettings(prev => ({ ...prev, themeId: t.id }));
                           // Save theme immediately
-                          fetch('/api/settings', {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ ...appSettings, themeId: t.id })
-                          }).catch(err => console.error('Failed to save theme', err));
+                          if (window.require) {
+                            const { ipcRenderer } = window.require('electron');
+                            ipcRenderer.invoke('save-settings', { ...appSettings, themeId: t.id })
+                              .catch(err => console.error('Failed to save theme', err));
+                          }
                           setShowThemeMenu(false);
                         }}
                       >
