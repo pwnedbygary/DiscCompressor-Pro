@@ -56,7 +56,8 @@ export default function App() {
   const [isAppSettingsOpen, setIsAppSettingsOpen] = useState(false);
   const [appSettings, setAppSettings] = useState({
     outputDirectory: '',
-    defaultFormat: 'CHD'
+    defaultFormat: 'CHD',
+    themeId: 'adwaita'
   });
 
   const logEndRef = useRef<HTMLDivElement>(null);
@@ -65,7 +66,13 @@ export default function App() {
   useEffect(() => {
     fetch('/api/settings')
       .then(res => res.json())
-      .then(data => setAppSettings(data))
+      .then(data => {
+        setAppSettings(data);
+        if (data.themeId) {
+          const theme = THEMES.find(t => t.id === data.themeId);
+          if (theme) setActiveTheme(theme);
+        }
+      })
       .catch(err => console.error('Failed to load settings', err));
   }, []);
 
@@ -345,6 +352,8 @@ export default function App() {
   };
 
   const [showHelp, setShowHelp] = useState(false);
+  const [showFileMenu, setShowFileMenu] = useState(false);
+  const [showEditMenu, setShowEditMenu] = useState(false);
 
   const selectedJob = jobs.find(j => j.id === selectedJobId);
 
@@ -419,8 +428,75 @@ export default function App() {
             DiscCompressor Pro
           </div>
           <div className="flex gap-4">
-            <button className="hover:opacity-70">File</button>
-            <button className="hover:opacity-70">Edit</button>
+            <div className="relative">
+              <button 
+                className="hover:opacity-70"
+                onClick={() => setShowFileMenu(!showFileMenu)}
+              >
+                File
+              </button>
+              <AnimatePresence>
+                {showFileMenu && (
+                  <motion.div 
+                    initial={{ opacity: 0, y: 5 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: 5 }}
+                    className="absolute top-full left-0 mt-1 w-48 rounded-md shadow-lg border z-50 py-1"
+                    style={{ 
+                      backgroundColor: activeTheme.colors.header, 
+                      borderColor: activeTheme.colors.border 
+                    }}
+                  >
+                    <button
+                      className="w-full text-left px-4 py-2 hover:bg-opacity-10 hover:bg-black"
+                      onClick={() => {
+                        if (window.require) {
+                          const { ipcRenderer } = window.require('electron');
+                          ipcRenderer.send('quit-app');
+                        }
+                        setShowFileMenu(false);
+                      }}
+                    >
+                      Quit
+                    </button>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </div>
+
+            <div className="relative">
+              <button 
+                className="hover:opacity-70"
+                onClick={() => setShowEditMenu(!showEditMenu)}
+              >
+                Edit
+              </button>
+              <AnimatePresence>
+                {showEditMenu && (
+                  <motion.div 
+                    initial={{ opacity: 0, y: 5 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: 5 }}
+                    className="absolute top-full left-0 mt-1 w-48 rounded-md shadow-lg border z-50 py-1"
+                    style={{ 
+                      backgroundColor: activeTheme.colors.header, 
+                      borderColor: activeTheme.colors.border 
+                    }}
+                  >
+                    <button
+                      className="w-full text-left px-4 py-2 hover:bg-opacity-10 hover:bg-black"
+                      onClick={() => {
+                        setIsAppSettingsOpen(true);
+                        setShowEditMenu(false);
+                      }}
+                    >
+                      Settings
+                    </button>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </div>
+
             <div className="relative">
               <button 
                 className="hover:opacity-70 flex items-center gap-1"
@@ -434,7 +510,7 @@ export default function App() {
                     initial={{ opacity: 0, y: 5 }}
                     animate={{ opacity: 1, y: 0 }}
                     exit={{ opacity: 0, y: 5 }}
-                    className="absolute top-full left-0 mt-1 w-48 rounded-md shadow-lg border z-50 py-1"
+                    className="absolute top-full left-0 mt-1 w-48 rounded-md shadow-lg border z-50 py-1 max-h-64 overflow-y-auto"
                     style={{ 
                       backgroundColor: activeTheme.colors.header, 
                       borderColor: activeTheme.colors.border 
@@ -446,6 +522,13 @@ export default function App() {
                         className="w-full text-left px-4 py-2 hover:bg-opacity-10 hover:bg-black flex items-center justify-between"
                         onClick={() => {
                           setActiveTheme(t);
+                          setAppSettings(prev => ({ ...prev, themeId: t.id }));
+                          // Save theme immediately
+                          fetch('/api/settings', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ ...appSettings, themeId: t.id })
+                          }).catch(err => console.error('Failed to save theme', err));
                           setShowThemeMenu(false);
                         }}
                       >
@@ -938,14 +1021,31 @@ export default function App() {
               <div className="space-y-4">
                 <div>
                   <label className="block text-sm font-medium mb-1">Output Directory</label>
-                  <input 
-                    type="text" 
-                    value={appSettings.outputDirectory}
-                    onChange={(e) => setAppSettings(prev => ({ ...prev, outputDirectory: e.target.value }))}
-                    className="w-full bg-transparent border rounded px-3 py-2 text-sm"
-                    style={{ borderColor: activeTheme.colors.border }}
-                    placeholder="/path/to/output"
-                  />
+                  <div className="flex gap-2">
+                    <input 
+                      type="text" 
+                      value={appSettings.outputDirectory}
+                      onChange={(e) => setAppSettings(prev => ({ ...prev, outputDirectory: e.target.value }))}
+                      className="flex-1 bg-transparent border rounded px-3 py-2 text-sm"
+                      style={{ borderColor: activeTheme.colors.border }}
+                      placeholder="/path/to/output"
+                    />
+                    <button
+                      onClick={async () => {
+                        if (window.require) {
+                          const { ipcRenderer } = window.require('electron');
+                          const selectedPath = await ipcRenderer.invoke('dialog:openDirectory');
+                          if (selectedPath) {
+                            setAppSettings(prev => ({ ...prev, outputDirectory: selectedPath }));
+                          }
+                        }
+                      }}
+                      className="px-4 py-2 rounded text-sm font-medium border hover:bg-black hover:bg-opacity-10"
+                      style={{ borderColor: activeTheme.colors.border }}
+                    >
+                      Browse
+                    </button>
+                  </div>
                   <p className="text-xs opacity-50 mt-1">Absolute path where compressed files will be saved.</p>
                 </div>
 

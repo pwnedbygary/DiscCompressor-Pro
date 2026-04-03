@@ -25,7 +25,8 @@ const settingsPath = path.join(userDataPath, 'settings.json');
 
 let appSettings = {
   outputDirectory: path.join(os.homedir(), 'DiscCompressorPro_Outputs'),
-  defaultFormat: 'CHD'
+  defaultFormat: 'CHD',
+  themeId: 'adwaita'
 };
 
 if (fs.existsSync(settingsPath)) {
