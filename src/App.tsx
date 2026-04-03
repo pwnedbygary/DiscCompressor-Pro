@@ -20,7 +20,8 @@ import {
   Palette,
   FileCode,
   Disc,
-  ArrowRight
+  ArrowRight,
+  Copy
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { useDropzone, DropzoneOptions } from 'react-dropzone';
@@ -149,12 +150,47 @@ export default function App() {
   };
 
   const updateJobType = (id: string, type: JobType) => {
-    setJobs(prev => prev.map(j => j.id === id ? { ...j, type } : j));
-    addLog(`Changed job type to ${type}`, 'info');
+    setJobs(prev => prev.map(j => j.id === id ? { 
+      ...j, 
+      type,
+      status: 'Pending',
+      progress: 0,
+      downloadUrl: undefined,
+      error: undefined
+    } : j));
+    addLog(`Changed job type to ${type} and requeued`, 'info');
   };
 
   const updateJobSettings = (id: string, settings: Partial<CompressionSettings>) => {
-    setJobs(prev => prev.map(j => j.id === id ? { ...j, settings: { ...j.settings, ...settings } } : j));
+    setJobs(prev => prev.map(j => j.id === id ? { 
+      ...j, 
+      settings: { ...j.settings, ...settings },
+      status: 'Pending',
+      progress: 0,
+      downloadUrl: undefined,
+      error: undefined
+    } : j));
+  };
+
+  const duplicateJob = (id: string) => {
+    const jobToCopy = jobs.find(j => j.id === id);
+    if (!jobToCopy) return;
+    const newJob: Job = {
+      ...jobToCopy,
+      id: Math.random().toString(36).substr(2, 9),
+      status: 'Pending',
+      progress: 0,
+      downloadUrl: undefined,
+      error: undefined,
+      addedAt: Date.now()
+    };
+    setJobs(prev => {
+      const index = prev.findIndex(j => j.id === id);
+      const newJobs = [...prev];
+      newJobs.splice(index + 1, 0, newJob);
+      return newJobs;
+    });
+    addLog(`Duplicated job ${jobToCopy.fileName}`, 'info');
   };
 
   const startProcessing = async () => {
@@ -588,6 +624,13 @@ export default function App() {
                       </a>
                     )}
                     <button 
+                      onClick={(e) => { e.stopPropagation(); duplicateJob(job.id); }}
+                      className="p-2 hover:bg-blue-500 hover:text-white rounded transition-colors"
+                      title="Duplicate Job"
+                    >
+                      <Copy className="w-4 h-4" />
+                    </button>
+                    <button 
                       onClick={(e) => { e.stopPropagation(); removeJob(job.id); }}
                       className="p-2 hover:bg-red-500 hover:text-white rounded transition-colors"
                       title="Remove Job"
@@ -731,8 +774,17 @@ export default function App() {
                   <button 
                     onClick={() => {
                       const settings = selectedJob.settings;
-                      setJobs(prev => prev.map(j => ({ ...j, settings: { ...settings } })));
-                      addLog('Applied settings to all jobs in queue', 'info');
+                      const type = selectedJob.type;
+                      setJobs(prev => prev.map(j => ({ 
+                        ...j, 
+                        type,
+                        settings: { ...settings },
+                        status: 'Pending',
+                        progress: 0,
+                        downloadUrl: undefined,
+                        error: undefined
+                      })));
+                      addLog('Applied format and settings to all jobs and requeued', 'info');
                     }}
                     className="w-full py-2 rounded text-sm font-medium border hover:bg-opacity-10 hover:bg-black"
                     style={{ borderColor: activeTheme.colors.border }}
