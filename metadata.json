@@ -1,0 +1,5 @@
+{
+  "name": "DiscCompressor Pro",
+  "description": "A comprehensive disc image compression utility for CHD, CSO, ZSO, JSO, and DAX formats with advanced queue management and Vim-inspired themes.",
+  "requestFramePermissions": []
+}
