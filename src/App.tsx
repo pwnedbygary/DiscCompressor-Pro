@@ -35,6 +35,12 @@ function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
 
+declare global {
+  interface Window {
+    require?: any;
+  }
+}
+
 export default function App() {
   // State
   const [jobs, setJobs] = useState<Job[]>([]);
@@ -45,8 +51,50 @@ export default function App() {
   const [isProcessing, setIsProcessing] = useState(false);
   const [selectedJobId, setSelectedJobId] = useState<string | null>(null);
   const [showThemeMenu, setShowThemeMenu] = useState(false);
+  
+  // App Settings State
+  const [isAppSettingsOpen, setIsAppSettingsOpen] = useState(false);
+  const [appSettings, setAppSettings] = useState({
+    outputDirectory: '',
+    defaultFormat: 'CHD'
+  });
 
   const logEndRef = useRef<HTMLDivElement>(null);
+
+  // Fetch App Settings
+  useEffect(() => {
+    fetch('/api/settings')
+      .then(res => res.json())
+      .then(data => setAppSettings(data))
+      .catch(err => console.error('Failed to load settings', err));
+  }, []);
+
+  // IPC Listener for Settings Menu
+  useEffect(() => {
+    if (window.require) {
+      const { ipcRenderer } = window.require('electron');
+      const handleOpenSettings = () => setIsAppSettingsOpen(true);
+      ipcRenderer.on('open-settings', handleOpenSettings);
+      return () => {
+        ipcRenderer.removeListener('open-settings', handleOpenSettings);
+      };
+    }
+  }, []);
+
+  // Save App Settings
+  const saveAppSettings = async () => {
+    try {
+      await fetch('/api/settings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(appSettings)
+      });
+      setIsAppSettingsOpen(false);
+      addLog('Application settings saved', 'success');
+    } catch (err) {
+      addLog('Failed to save application settings', 'error');
+    }
+  };
 
   // Scroll log to bottom
   useEffect(() => {
@@ -100,7 +148,7 @@ export default function App() {
         fileName: file.name,
         fileSize: file.size,
         fileType,
-        type: defaultType,
+        type: appSettings.defaultFormat as JobType,
         status: 'Pending',
         progress: 0,
         settings: { 
@@ -110,12 +158,13 @@ export default function App() {
         },
         addedAt: Date.now(),
         file: file,
+        inputPath: (file as any).path
       };
     });
 
     setJobs(prev => [...prev, ...newJobs]);
-    addLog(`Added ${newJobs.length} jobs and ${otherFiles.length} auxiliary files`, 'info');
-  }, [addLog]);
+    addLog(`Added ${newJobs.length} jobs`, 'info');
+  }, [addLog, appSettings.defaultFormat]);
 
   const dropzoneOptions: any = { 
     onDrop,
@@ -205,34 +254,14 @@ export default function App() {
       return;
     }
 
-    // 1. Upload all pending files
-    addLog('Uploading files to server...', 'info');
-    const formData = new FormData();
+    // 1. Process each job sequentially
     for (const job of pendingJobs) {
-      if (job.file) {
-        formData.append('files', job.file);
+      if (!job.inputPath) {
+        addLog(`Skipping ${job.fileName}: Local file path not found. Please run the desktop app.`, 'error');
+        setJobs(prev => prev.map(j => j.id === job.id ? { ...j, status: 'Error', error: 'Missing local path' } : j));
+        continue;
       }
-    }
-    for (const file of extraFiles) {
-      formData.append('files', file);
-    }
 
-    try {
-      const uploadRes = await fetch('/api/upload', {
-        method: 'POST',
-        body: formData,
-      });
-      if (!uploadRes.ok) throw new Error('Upload failed');
-      addLog('Files uploaded successfully', 'success');
-      setExtraFiles([]); // Clear extra files after upload
-    } catch (err) {
-      addLog('Failed to upload files', 'error');
-      setIsProcessing(false);
-      return;
-    }
-
-    // 2. Process each job sequentially
-    for (const job of pendingJobs) {
       setJobs(prev => prev.map(j => j.id === job.id ? { ...j, status: 'Processing' } : j));
       addLog(`Processing ${job.fileName} to ${job.type}...`, 'info');
 
@@ -272,6 +301,7 @@ export default function App() {
             fileName: job.fileName,
             type: job.type,
             settings: job.settings,
+            inputPath: job.inputPath
           }),
         }).catch(err => {
           addLog(`Failed to start process: ${err.message}`, 'error');
@@ -872,6 +902,90 @@ export default function App() {
           {isProcessing ? 'Processing...' : 'Idle'}
         </div>
       </footer>
+      {/* Settings Modal */}
+      <AnimatePresence>
+        {isAppSettingsOpen && (
+          <motion.div 
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50 backdrop-blur-sm"
+          >
+            <motion.div 
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+              className="w-full max-w-md p-6 rounded-xl border shadow-2xl"
+              style={{ 
+                backgroundColor: activeTheme.colors.bg, 
+                borderColor: activeTheme.colors.border,
+                color: activeTheme.colors.text
+              }}
+            >
+              <div className="flex items-center justify-between mb-6">
+                <h2 className="text-xl font-bold flex items-center gap-2">
+                  <Settings className="w-5 h-5" />
+                  Application Settings
+                </h2>
+                <button 
+                  onClick={() => setIsAppSettingsOpen(false)}
+                  className="p-1 hover:bg-black hover:bg-opacity-10 rounded-full"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium mb-1">Output Directory</label>
+                  <input 
+                    type="text" 
+                    value={appSettings.outputDirectory}
+                    onChange={(e) => setAppSettings(prev => ({ ...prev, outputDirectory: e.target.value }))}
+                    className="w-full bg-transparent border rounded px-3 py-2 text-sm"
+                    style={{ borderColor: activeTheme.colors.border }}
+                    placeholder="/path/to/output"
+                  />
+                  <p className="text-xs opacity-50 mt-1">Absolute path where compressed files will be saved.</p>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium mb-1">Default Format</label>
+                  <select 
+                    value={appSettings.defaultFormat}
+                    onChange={(e) => setAppSettings(prev => ({ ...prev, defaultFormat: e.target.value }))}
+                    className="w-full bg-transparent border rounded px-3 py-2 text-sm"
+                    style={{ borderColor: activeTheme.colors.border }}
+                  >
+                    <option value="CHD">CHD (CD/DVD)</option>
+                    <option value="CSO">CSO (PSP/PS2)</option>
+                    <option value="CSOv2">CSOv2</option>
+                    <option value="ZSO">ZSO</option>
+                    <option value="JSO">JSO</option>
+                    <option value="DAX">DAX</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="mt-8 flex justify-end gap-3">
+                <button 
+                  onClick={() => setIsAppSettingsOpen(false)}
+                  className="px-4 py-2 rounded text-sm font-medium hover:bg-black hover:bg-opacity-10"
+                >
+                  Cancel
+                </button>
+                <button 
+                  onClick={saveAppSettings}
+                  className="px-4 py-2 rounded text-sm font-medium text-white"
+                  style={{ backgroundColor: activeTheme.colors.accent }}
+                >
+                  Save Settings
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

@@ -1,21 +1,61 @@
-const { app, BrowserWindow } = require('electron');
+const { app, BrowserWindow, Menu } = require('electron');
 const path = require('path');
 
 function createWindow() {
   const win = new BrowserWindow({
     width: 1200,
     height: 800,
-    autoHideMenuBar: true,
     title: "DiscCompressor Pro",
     webPreferences: {
-      nodeIntegration: true
+      nodeIntegration: true,
+      contextIsolation: false
     }
   });
+
+  const template = [
+    {
+      label: 'File',
+      submenu: [
+        { role: 'quit' }
+      ]
+    },
+    {
+      label: 'Edit',
+      submenu: [
+        {
+          label: 'Settings',
+          click: () => {
+            win.webContents.send('open-settings');
+          }
+        }
+      ]
+    },
+    {
+      label: 'View',
+      submenu: [
+        { role: 'reload' },
+        { role: 'forceReload' },
+        { role: 'toggleDevTools' },
+        { type: 'separator' },
+        { role: 'resetZoom' },
+        { role: 'zoomIn' },
+        { role: 'zoomOut' },
+        { type: 'separator' },
+        { role: 'togglefullscreen' }
+      ]
+    }
+  ];
+
+  const menu = Menu.buildFromTemplate(template);
+  Menu.setApplicationMenu(menu);
 
   win.loadURL('http://localhost:3000');
 }
 
 app.whenReady().then(() => {
+  // Pass user data path to the server
+  process.env.USER_DATA_PATH = app.getPath('userData');
+  
   const isDev = !app.isPackaged;
   
   if (isDev) {

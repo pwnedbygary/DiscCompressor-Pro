@@ -23,6 +23,7 @@ export interface Job {
   error?: string;
   addedAt: number;
   file?: File;
+  inputPath?: string;
   downloadUrl?: string;
 }
 

@@ -1,9 +1,9 @@
 import express from 'express';
-import multer from 'multer';
 import cors from 'cors';
 import { spawn } from 'child_process';
 import path from 'path';
 import fs from 'fs';
+import os from 'os';
 import { fileURLToPath } from 'url';
 
 // Handle ESM/CJS compatibility for __dirname
@@ -16,22 +16,35 @@ const PORT = 3000;
 app.use(cors());
 app.use(express.json());
 
-const uploadDir = path.join(process.cwd(), 'uploads');
-const outputDir = path.join(process.cwd(), 'outputs');
+// Settings Management
+const userDataPath = process.env.USER_DATA_PATH || path.join(os.homedir(), '.config', 'DiscCompressorPro');
+if (!fs.existsSync(userDataPath)) {
+  fs.mkdirSync(userDataPath, { recursive: true });
+}
+const settingsPath = path.join(userDataPath, 'settings.json');
 
-if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir, { recursive: true });
-if (!fs.existsSync(outputDir)) fs.mkdirSync(outputDir, { recursive: true });
+let appSettings = {
+  outputDirectory: path.join(os.homedir(), 'DiscCompressorPro_Outputs'),
+  defaultFormat: 'CHD'
+};
 
-const storage = multer.diskStorage({
-  destination: (req, file, cb) => {
-    cb(null, uploadDir);
-  },
-  filename: (req, file, cb) => {
-    cb(null, file.originalname);
+if (fs.existsSync(settingsPath)) {
+  try {
+    appSettings = { ...appSettings, ...JSON.parse(fs.readFileSync(settingsPath, 'utf-8')) };
+  } catch (e) {
+    console.error('Failed to load settings', e);
   }
+}
+
+app.get('/api/settings', (req, res) => {
+  res.json(appSettings);
 });
 
-const upload = multer({ storage });
+app.post('/api/settings', (req, res) => {
+  appSettings = { ...appSettings, ...req.body };
+  fs.writeFileSync(settingsPath, JSON.stringify(appSettings, null, 2));
+  res.json({ success: true });
+});
 
 // Store SSE clients
 const clients = new Map<string, express.Response>();
@@ -44,10 +57,6 @@ function sendEvent(jobId: string, type: string, data: any) {
 }
 
 // API Routes
-app.post('/api/upload', upload.array('files'), (req, res) => {
-  res.json({ message: 'Files uploaded successfully' });
-});
-
 app.get('/api/events/:jobId', (req, res) => {
   res.setHeader('Content-Type', 'text/event-stream');
   res.setHeader('Cache-Control', 'no-cache');
@@ -62,9 +71,17 @@ app.get('/api/events/:jobId', (req, res) => {
 });
 
 app.post('/api/process', (req, res) => {
-  const { jobId, fileName, type, settings } = req.body;
+  const { jobId, fileName, type, settings, inputPath } = req.body;
   
-  const inputPath = path.join(uploadDir, fileName);
+  if (!inputPath) {
+    return res.status(400).json({ error: 'inputPath is required' });
+  }
+
+  const outputDir = appSettings.outputDirectory;
+  if (!fs.existsSync(outputDir)) {
+    fs.mkdirSync(outputDir, { recursive: true });
+  }
+
   const ext = path.extname(fileName);
   const baseName = path.basename(fileName, ext);
   
