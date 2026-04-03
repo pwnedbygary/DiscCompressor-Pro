@@ -10,7 +10,7 @@ export const DEFAULT_SETTINGS: CompressionSettings = {
 export const CHD_ALGORITHMS = [
   { id: 'zlib', name: 'Zlib' },
   { id: 'lzma', name: 'LZMA' },
-  { id: 'huffman', name: 'Huffman' },
+  { id: 'huff', name: 'Huffman' },
   { id: 'flac', name: 'FLAC' },
 ];
 

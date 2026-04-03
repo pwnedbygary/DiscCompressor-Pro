@@ -92,7 +92,7 @@ export default function App() {
       // Set defaults based on MAME/chdman best practices
       const chdAlgorithms = fileType === 'CD' 
         ? ['lzma', 'zlib', 'flac'] 
-        : ['lzma', 'zlib', 'huffman'];
+        : ['lzma', 'zlib', 'huff'];
 
       return {
         id: Math.random().toString(36).substr(2, 9),
@@ -417,7 +417,10 @@ export default function App() {
             type="file" 
             multiple 
             className="hidden" 
-            onChange={(e) => onDrop(Array.from(e.target.files || []))}
+            onChange={(e) => {
+              onDrop(Array.from(e.target.files || []));
+              e.target.value = '';
+            }}
           />
           <div 
             className="flex items-center gap-2 px-3 py-1.5 rounded text-sm font-medium transition-all hover:brightness-110"
@@ -434,7 +437,10 @@ export default function App() {
             webkitdirectory="" 
             directory="" 
             className="hidden" 
-            onChange={(e) => onDrop(Array.from(e.target.files || []))}
+            onChange={(e) => {
+              onDrop(Array.from(e.target.files || []));
+              e.target.value = '';
+            }}
           />
           <div 
             className="flex items-center gap-2 px-3 py-1.5 rounded text-sm font-medium border hover:bg-opacity-10 hover:bg-black"
