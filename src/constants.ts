@@ -14,7 +14,8 @@ export const CHD_ALGORITHMS = [
   { id: 'flac', name: 'FLAC' },
 ];
 
-export const HUNK_SIZES = [512, 1024, 2048, 4096, 8192, 16384, 32768, 65536];
+export const CD_HUNK_SIZES = [2448, 4896, 9792, 19584, 39168, 78336];
+export const DVD_HUNK_SIZES = [512, 1024, 2048, 4096, 8192, 16384, 32768, 65536];
 
 export const THEMES: Theme[] = [
   {

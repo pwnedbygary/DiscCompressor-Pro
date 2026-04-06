@@ -29,7 +29,7 @@ import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
 
 import { Job, JobType, JobStatus, CompressionSettings, Theme, LogEntry } from './types';
-import { DEFAULT_SETTINGS, THEMES, CHD_ALGORITHMS, HUNK_SIZES } from './constants';
+import { DEFAULT_SETTINGS, THEMES, CHD_ALGORITHMS, CD_HUNK_SIZES, DVD_HUNK_SIZES } from './constants';
 
 function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
@@ -183,7 +183,7 @@ export default function App() {
         settings: { 
           ...DEFAULT_SETTINGS,
           chdAlgorithms,
-          hunkSize: fileType === 'CD' ? 2048 : 4096 // Standard hunk sizes
+          hunkSize: fileType === 'CD' ? 2448 : 4096 // Standard hunk sizes
         },
         addedAt: Date.now(),
         file: file,
@@ -225,6 +225,32 @@ export default function App() {
     const targetIndex = direction === 'up' ? index - 1 : index + 1;
     [newJobs[index], newJobs[targetIndex]] = [newJobs[targetIndex], newJobs[index]];
     setJobs(newJobs);
+  };
+
+  const updateJobFileType = (id: string, fileType: 'CD' | 'DVD') => {
+    setJobs(prev => prev.map(j => {
+      if (j.id === id) {
+        // Adjust hunk size to a valid one for the new type if needed
+        let newHunkSize = j.settings.hunkSize;
+        if (fileType === 'CD' && !CD_HUNK_SIZES.includes(newHunkSize)) {
+          newHunkSize = 2448;
+        } else if (fileType === 'DVD' && !DVD_HUNK_SIZES.includes(newHunkSize)) {
+          newHunkSize = 4096;
+        }
+        
+        return { 
+          ...j, 
+          fileType,
+          settings: { ...j.settings, hunkSize: newHunkSize },
+          status: 'Pending',
+          progress: 0,
+          downloadUrl: undefined,
+          error: undefined
+        };
+      }
+      return j;
+    }));
+    addLog(`Changed source type to ${fileType} and requeued`, 'info');
   };
 
   const updateJobType = (id: string, type: JobType) => {
@@ -388,6 +414,14 @@ export default function App() {
   const [showHelp, setShowHelp] = useState(false);
   const [showFileMenu, setShowFileMenu] = useState(false);
   const [showEditMenu, setShowEditMenu] = useState(false);
+  const [maxThreads, setMaxThreads] = useState(8);
+
+  useEffect(() => {
+    // Try to get hardware concurrency
+    if (typeof navigator !== 'undefined' && navigator.hardwareConcurrency) {
+      setMaxThreads(navigator.hardwareConcurrency);
+    }
+  }, []);
 
   const selectedJob = jobs.find(j => j.id === selectedJobId);
 
@@ -837,6 +871,20 @@ export default function App() {
               </div>
 
               <div className="space-y-6">
+                {/* Source Type */}
+                <section>
+                  <label className="block text-xs font-bold uppercase tracking-wider opacity-50 mb-2">Source Type</label>
+                  <select 
+                    value={selectedJob.fileType}
+                    onChange={(e) => updateJobFileType(selectedJob.id, e.target.value as 'CD' | 'DVD')}
+                    className="w-full bg-transparent border rounded px-3 py-2 text-sm focus:outline-none focus:ring-1 theme-select"
+                    style={{ borderColor: activeTheme.colors.border, ringColor: activeTheme.colors.accent }}
+                  >
+                    <option value="CD">CD (BIN/CUE/ISO)</option>
+                    <option value="DVD">DVD (ISO)</option>
+                  </select>
+                </section>
+
                 {/* Output Type */}
                 <section>
                   <label className="block text-xs font-bold uppercase tracking-wider opacity-50 mb-2">Output Format</label>
@@ -865,15 +913,15 @@ export default function App() {
                       <input 
                         type="range"
                         min="0"
-                        max={HUNK_SIZES.length - 1}
+                        max={(selectedJob.fileType === 'CD' ? CD_HUNK_SIZES : DVD_HUNK_SIZES).length - 1}
                         step="1"
-                        value={HUNK_SIZES.indexOf(selectedJob.settings.hunkSize)}
-                        onChange={(e) => updateJobSettings(selectedJob.id, { hunkSize: HUNK_SIZES[parseInt(e.target.value)] })}
+                        value={(selectedJob.fileType === 'CD' ? CD_HUNK_SIZES : DVD_HUNK_SIZES).indexOf(selectedJob.settings.hunkSize)}
+                        onChange={(e) => updateJobSettings(selectedJob.id, { hunkSize: (selectedJob.fileType === 'CD' ? CD_HUNK_SIZES : DVD_HUNK_SIZES)[parseInt(e.target.value)] })}
                         className="w-full h-1.5 rounded-lg appearance-none cursor-pointer"
                         style={{ backgroundColor: activeTheme.colors.border }}
                       />
                       <div className="flex justify-between text-[10px] mt-1 opacity-50">
-                        {HUNK_SIZES.map((s, i) => (
+                        {(selectedJob.fileType === 'CD' ? CD_HUNK_SIZES : DVD_HUNK_SIZES).map((s, i) => (
                           <span key={s}>{i % 2 === 0 ? s : '|'}</span>
                         ))}
                       </div>
@@ -926,16 +974,26 @@ export default function App() {
                     </section>
 
                     <section>
-                      <label className="block text-xs font-bold uppercase tracking-wider opacity-50 mb-2">Threads</label>
+                      <label className="block text-xs font-bold uppercase tracking-wider opacity-50 mb-2">
+                        Threads: {selectedJob.settings.threads}
+                      </label>
                       <input 
-                        type="number"
+                        type="range"
                         min="1"
-                        max="32"
+                        max={maxThreads}
+                        step="1"
                         value={selectedJob.settings.threads}
                         onChange={(e) => updateJobSettings(selectedJob.id, { threads: parseInt(e.target.value) })}
-                        className="w-full bg-transparent border rounded px-3 py-2 text-sm"
-                        style={{ borderColor: activeTheme.colors.border }}
+                        className="w-full h-1.5 rounded-lg appearance-none cursor-pointer"
+                        style={{ backgroundColor: activeTheme.colors.border }}
                       />
+                      <div className="flex justify-between text-[10px] mt-1 opacity-50">
+                        {Array.from({ length: maxThreads }, (_, i) => i + 1).map(n => (
+                          <span key={n}>
+                            {n === 1 || n === maxThreads || n % 4 === 0 ? n : '|'}
+                          </span>
+                        ))}
+                      </div>
                     </section>
                   </>
                 )}
