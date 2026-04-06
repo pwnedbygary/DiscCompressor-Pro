@@ -399,6 +399,17 @@ export default function App() {
         color: activeTheme.colors.text 
       }}
     >
+      <style>{`
+        .theme-hover:hover {
+          background-color: ${activeTheme.colors.accent} !important;
+          color: ${activeTheme.colors.accentText} !important;
+        }
+        .theme-select option {
+          background-color: ${activeTheme.colors.bg};
+          color: ${activeTheme.colors.text};
+        }
+      `}</style>
+      
       {/* Help Modal */}
       <AnimatePresence>
         {showHelp && (
@@ -486,7 +497,7 @@ export default function App() {
                     }}
                   >
                     <button
-                      className="w-full text-left px-4 py-2 hover:bg-opacity-10 hover:bg-black"
+                      className="w-full text-left px-4 py-2 theme-hover"
                       onClick={() => {
                         const ipcRenderer = getIpcRenderer();
                         if (ipcRenderer) {
@@ -526,7 +537,7 @@ export default function App() {
                     }}
                   >
                     <button
-                      className="w-full text-left px-4 py-2 hover:bg-opacity-10 hover:bg-black"
+                      className="w-full text-left px-4 py-2 theme-hover"
                       onClick={() => {
                         setIsAppSettingsOpen(true);
                         setShowEditMenu(false);
@@ -565,7 +576,7 @@ export default function App() {
                     {THEMES.map(t => (
                       <button
                         key={t.id}
-                        className="w-full text-left px-4 py-2 hover:bg-opacity-10 hover:bg-black flex items-center justify-between"
+                        className="w-full text-left px-4 py-2 theme-hover flex items-center justify-between"
                         onClick={() => {
                           setActiveTheme(t);
                           setAppSettings(prev => ({ ...prev, themeId: t.id }));
@@ -832,7 +843,7 @@ export default function App() {
                   <select 
                     value={selectedJob.type}
                     onChange={(e) => updateJobType(selectedJob.id, e.target.value as JobType)}
-                    className="w-full bg-transparent border rounded px-3 py-2 text-sm focus:outline-none focus:ring-1"
+                    className="w-full bg-transparent border rounded px-3 py-2 text-sm focus:outline-none focus:ring-1 theme-select"
                     style={{ borderColor: activeTheme.colors.border, ringColor: activeTheme.colors.accent }}
                   >
                     <option value="CHD">CHD (MAME/RetroArch)</option>
@@ -1103,7 +1114,7 @@ export default function App() {
                   <select 
                     value={appSettings.defaultFormat}
                     onChange={(e) => setAppSettings(prev => ({ ...prev, defaultFormat: e.target.value }))}
-                    className="w-full bg-transparent border rounded px-3 py-2 text-sm"
+                    className="w-full bg-transparent border rounded px-3 py-2 text-sm theme-select"
                     style={{ borderColor: activeTheme.colors.border }}
                   >
                     <option value="CHD">CHD (CD/DVD)</option>
