@@ -372,6 +372,7 @@ export default function App() {
 
   const stopProcessing = async () => {
     setIsProcessing(false);
+    isProcessingRef.current = false;
     addLog('Stopping queue...', 'warn');
     const ipcRenderer = getIpcRenderer();
     if (ipcRenderer) {
@@ -385,6 +386,7 @@ export default function App() {
   const startProcessing = async () => {
     if (isProcessing || jobs.length === 0) return;
     setIsProcessing(true);
+    isProcessingRef.current = true;
     addLog('Starting queue processing...', 'info');
 
     const pendingJobs = jobs.filter(j => j.status === 'Pending');
