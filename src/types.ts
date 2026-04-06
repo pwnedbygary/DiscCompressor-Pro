@@ -1,4 +1,4 @@
-export type JobType = 'CHD' | 'CSO' | 'CSOv2' | 'ZSO' | 'JSO' | 'DAX';
+export type JobType = 'CHD' | 'CSO' | 'CSOv2' | 'ZSO';
 export type JobStatus = 'Pending' | 'Processing' | 'Completed' | 'Error';
 
 export interface CompressionSettings {
@@ -6,7 +6,7 @@ export interface CompressionSettings {
   hunkSize: number;
   chdAlgorithms: string[];
   
-  // CSO/ZSO/JSO/DAX specific
+  // CSO/ZSO specific
   compressionLevel: number;
   threads: number;
 }

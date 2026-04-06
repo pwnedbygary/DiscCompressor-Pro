@@ -169,8 +169,8 @@ export default function App() {
 
       // Set defaults based on MAME/chdman best practices
       const chdAlgorithms = fileType === 'CD' 
-        ? ['lzma', 'zlib', 'flac'] 
-        : ['lzma', 'zlib', 'huff'];
+        ? ['cdzl', 'cdlz', 'cdfl'] 
+        : ['zlib', 'lzma', 'huff', 'flac'];
 
       return {
         id: Math.random().toString(36).substr(2, 9),
@@ -238,10 +238,15 @@ export default function App() {
           newHunkSize = 4096;
         }
         
+        // Update default algorithms for the new type
+        const newAlgorithms = fileType === 'CD'
+          ? ['cdzl', 'cdlz', 'cdfl']
+          : ['zlib', 'lzma', 'huff', 'flac'];
+        
         return { 
           ...j, 
           fileType,
-          settings: { ...j.settings, hunkSize: newHunkSize },
+          settings: { ...j.settings, hunkSize: newHunkSize, chdAlgorithms: newAlgorithms },
           status: 'Pending',
           progress: 0,
           downloadUrl: undefined,
@@ -473,8 +478,8 @@ export default function App() {
                   <p>Standard for PSP and PS2 emulators. Uses Zlib compression. Level 9 is recommended for best size, though it may impact loading times on real hardware.</p>
                 </section>
                 <section>
-                  <h3 className="font-bold text-accent mb-1">ZSO / JSO</h3>
-                  <p>Modern alternatives to CSO. ZSO uses Zstandard (faster/better compression), while JSO uses LZ4 (extremely fast decompression).</p>
+                  <h3 className="font-bold text-accent mb-1">ZSO</h3>
+                  <p>Modern alternative to CSO. ZSO uses Zstandard (faster/better compression).</p>
                 </section>
                 <section>
                   <h3 className="font-bold text-accent mb-1">Vim Themes</h3>
@@ -872,18 +877,20 @@ export default function App() {
 
               <div className="space-y-6">
                 {/* Source Type */}
-                <section>
-                  <label className="block text-xs font-bold uppercase tracking-wider opacity-50 mb-2">Source Type</label>
-                  <select 
-                    value={selectedJob.fileType}
-                    onChange={(e) => updateJobFileType(selectedJob.id, e.target.value as 'CD' | 'DVD')}
-                    className="w-full bg-transparent border rounded px-3 py-2 text-sm focus:outline-none focus:ring-1 theme-select"
-                    style={{ borderColor: activeTheme.colors.border, ringColor: activeTheme.colors.accent }}
-                  >
-                    <option value="CD">CD (BIN/CUE/ISO)</option>
-                    <option value="DVD">DVD (ISO)</option>
-                  </select>
-                </section>
+                {selectedJob.type === 'CHD' && (
+                  <section>
+                    <label className="block text-xs font-bold uppercase tracking-wider opacity-50 mb-2">Source Type</label>
+                    <select 
+                      value={selectedJob.fileType}
+                      onChange={(e) => updateJobFileType(selectedJob.id, e.target.value as 'CD' | 'DVD')}
+                      className="w-full bg-transparent border rounded px-3 py-2 text-sm focus:outline-none focus:ring-1 theme-select"
+                      style={{ borderColor: activeTheme.colors.border, ringColor: activeTheme.colors.accent }}
+                    >
+                      <option value="CD">CD (BIN/CUE/ISO)</option>
+                      <option value="DVD">DVD (ISO)</option>
+                    </select>
+                  </section>
+                )}
 
                 {/* Output Type */}
                 <section>
@@ -898,8 +905,6 @@ export default function App() {
                     <option value="CSO">CSO (PSP/PS2)</option>
                     <option value="CSOv2">CSOv2 (Zlib/LZMA)</option>
                     <option value="ZSO">ZSO (Zstandard)</option>
-                    <option value="JSO">JSO (LZ4)</option>
-                    <option value="DAX">DAX (Legacy)</option>
                   </select>
                 </section>
 
@@ -930,24 +935,34 @@ export default function App() {
                     {/* CHD Algorithms */}
                     <section>
                       <label className="block text-xs font-bold uppercase tracking-wider opacity-50 mb-2">Compression Algorithms</label>
-                      <div className="grid grid-cols-2 gap-2">
-                        {CHD_ALGORITHMS.map(algo => (
-                          <label key={algo.id} className="flex items-center gap-2 text-sm cursor-pointer">
-                            <input 
-                              type="checkbox"
-                              checked={selectedJob.settings.chdAlgorithms.includes(algo.id)}
-                              onChange={(e) => {
-                                const current = selectedJob.settings.chdAlgorithms;
-                                const next = e.target.checked 
-                                  ? [...current, algo.id]
-                                  : current.filter(a => a !== algo.id);
-                                if (next.length > 0) updateJobSettings(selectedJob.id, { chdAlgorithms: next });
-                              }}
-                              className="rounded"
-                            />
-                            {algo.name}
-                          </label>
-                        ))}
+                      <div className="grid grid-cols-1 gap-2">
+                        {CHD_ALGORITHMS.map(algo => {
+                          const isEnabled = algo.type === selectedJob.fileType;
+                          return (
+                            <label 
+                              key={algo.id} 
+                              className={cn(
+                                "flex items-center gap-2 text-sm",
+                                isEnabled ? "cursor-pointer" : "opacity-30 cursor-not-allowed"
+                              )}
+                            >
+                              <input 
+                                type="checkbox"
+                                disabled={!isEnabled}
+                                checked={selectedJob.settings.chdAlgorithms.includes(algo.id)}
+                                onChange={(e) => {
+                                  const current = selectedJob.settings.chdAlgorithms;
+                                  const next = e.target.checked 
+                                    ? [...current, algo.id]
+                                    : current.filter(a => a !== algo.id);
+                                  if (next.length > 0) updateJobSettings(selectedJob.id, { chdAlgorithms: next });
+                                }}
+                                className="rounded"
+                              />
+                              {algo.name}
+                            </label>
+                          );
+                        })}
                       </div>
                     </section>
                   </>
@@ -1003,15 +1018,35 @@ export default function App() {
                     onClick={() => {
                       const settings = selectedJob.settings;
                       const type = selectedJob.type;
-                      setJobs(prev => prev.map(j => ({ 
-                        ...j, 
-                        type,
-                        settings: { ...settings },
-                        status: 'Pending',
-                        progress: 0,
-                        downloadUrl: undefined,
-                        error: undefined
-                      })));
+                      setJobs(prev => prev.map(j => {
+                        // Keep the target job's fileType
+                        let adaptedSettings = { ...settings };
+                        let targetFileType = j.fileType;
+                        
+                        // If the source job was a different fileType, we need to adapt the settings for this target
+                        if (targetFileType === 'CD' && !CD_HUNK_SIZES.includes(adaptedSettings.hunkSize)) {
+                          adaptedSettings.hunkSize = 2448;
+                        } else if (targetFileType === 'DVD' && !DVD_HUNK_SIZES.includes(adaptedSettings.hunkSize)) {
+                          adaptedSettings.hunkSize = 4096;
+                        }
+                        
+                        // Ensure algorithms match the target fileType
+                        const validAlgos = CHD_ALGORITHMS.filter(a => a.type === targetFileType).map(a => a.id);
+                        adaptedSettings.chdAlgorithms = adaptedSettings.chdAlgorithms.filter(a => validAlgos.includes(a));
+                        if (adaptedSettings.chdAlgorithms.length === 0) {
+                          adaptedSettings.chdAlgorithms = targetFileType === 'CD' ? ['cdzl', 'cdlz', 'cdfl'] : ['zlib', 'lzma', 'huff', 'flac'];
+                        }
+
+                        return { 
+                          ...j, 
+                          type,
+                          settings: adaptedSettings,
+                          status: 'Pending',
+                          progress: 0,
+                          downloadUrl: undefined,
+                          error: undefined
+                        };
+                      }));
                       addLog('Applied format and settings to all jobs and requeued', 'info');
                     }}
                     className="w-full py-2 rounded text-sm font-medium border hover:bg-opacity-10 hover:bg-black"
@@ -1179,8 +1214,6 @@ export default function App() {
                     <option value="CSO">CSO (PSP/PS2)</option>
                     <option value="CSOv2">CSOv2</option>
                     <option value="ZSO">ZSO</option>
-                    <option value="JSO">JSO</option>
-                    <option value="DAX">DAX</option>
                   </select>
                 </div>
               </div>

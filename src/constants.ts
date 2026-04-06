@@ -8,10 +8,15 @@ export const DEFAULT_SETTINGS: CompressionSettings = {
 };
 
 export const CHD_ALGORITHMS = [
-  { id: 'zlib', name: 'Zlib' },
-  { id: 'lzma', name: 'LZMA' },
-  { id: 'huff', name: 'Huffman' },
-  { id: 'flac', name: 'FLAC' },
+  { id: 'zlib', name: 'zlib — zlib deflate', type: 'DVD' },
+  { id: 'zstd', name: 'zstd — Zstandard', type: 'DVD' },
+  { id: 'lzma', name: 'lzma — LZMA', type: 'DVD' },
+  { id: 'huff', name: 'huff — Huffman', type: 'DVD' },
+  { id: 'flac', name: 'flac — FLAC', type: 'DVD' },
+  { id: 'cdzl', name: 'cdzl — CD zlib', type: 'CD' },
+  { id: 'cdzs', name: 'cdzs — CD Zstandard', type: 'CD' },
+  { id: 'cdlz', name: 'cdlz — CD LZMA+zlib', type: 'CD' },
+  { id: 'cdfl', name: 'cdfl — CD FLAC+zlib', type: 'CD' },
 ];
 
 export const CD_HUNK_SIZES = [2448, 4896, 9792, 19584, 39168, 78336];
