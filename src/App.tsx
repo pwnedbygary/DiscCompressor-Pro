@@ -1084,18 +1084,6 @@ export default function App() {
                 ) : selectedJob.type === 'Extract' ? (
                   <>
                     <section>
-                      <label className="block text-xs font-bold uppercase tracking-wider opacity-50 mb-2">Extract Format</label>
-                      <select 
-                        value={selectedJob.settings.extractFormat || 'ISO'}
-                        onChange={(e) => updateJobSettings(selectedJob.id, { extractFormat: e.target.value as 'ISO' | 'BIN/CUE' })}
-                        className="w-full bg-transparent border rounded px-3 py-2 text-sm focus:outline-none focus:ring-1 theme-select"
-                        style={{ borderColor: activeTheme.colors.border, ringColor: activeTheme.colors.accent }}
-                      >
-                        <option value="ISO">ISO</option>
-                        <option value="BIN/CUE">BIN/CUE</option>
-                      </select>
-                    </section>
-                    <section>
                       <label className="block text-xs font-bold uppercase tracking-wider opacity-50 mb-2">
                         Threads: {selectedJob.settings.threads}
                       </label>

@@ -2,7 +2,9 @@ const { app, BrowserWindow, Menu, ipcMain, dialog } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const os = require('os');
-const { spawn } = require('child_process');
+const { spawn, exec } = require('child_process');
+const util = require('util');
+const execPromise = util.promisify(exec);
 
 let mainWindow;
 
@@ -116,7 +118,7 @@ ipcMain.handle('process-file', async (event, { jobId, fileName, type, settings, 
     outputExt = settings.extractFormat === 'BIN/CUE' ? '.cue' : '.iso';
   }
   
-  const outputPath = (type === 'Info' || type === 'Verify') ? null : path.join(outputDir, `${baseName}${outputExt}`);
+  let outputPath = (type === 'Info' || type === 'Verify') ? null : path.join(outputDir, `${baseName}${outputExt}`);
   
   let cmd = '';
   let args = [];
@@ -137,7 +139,23 @@ ipcMain.handle('process-file', async (event, { jobId, fileName, type, settings, 
   } else if (type === 'Extract') {
     if (ext.toLowerCase() === '.chd') {
       cmd = 'chdman';
-      const extractCmd = settings.extractFormat === 'BIN/CUE' ? 'extractcd' : 'extractdvd';
+      let extractCmd = settings.extractFormat === 'BIN/CUE' ? 'extractcd' : 'extractdvd';
+      let finalOutputExt = settings.extractFormat === 'BIN/CUE' ? '.cue' : '.iso';
+
+      try {
+        const { stdout } = await execPromise(`chdman info -i "${inputPath}"`);
+        if (stdout.includes("Tag='DVD '")) {
+          extractCmd = 'extractdvd';
+          finalOutputExt = '.iso';
+        } else if (stdout.includes("TRACK:1") || stdout.includes("Tag='CHCD'")) {
+          extractCmd = 'extractcd';
+          finalOutputExt = '.cue';
+        }
+      } catch (e) {
+        console.error("Failed to get chd info", e);
+      }
+
+      outputPath = path.join(outputDir, `${baseName}${finalOutputExt}`);
       args = [extractCmd, '-i', inputPath, '-o', outputPath, '-f'];
     } else {
       cmd = 'maxcso';
