@@ -72,6 +72,11 @@ export default function App() {
   const [isProcessing, setIsProcessing] = useState(false);
   const [selectedJobId, setSelectedJobId] = useState<string | null>(null);
   const [showThemeMenu, setShowThemeMenu] = useState(false);
+  const [showFileMenu, setShowFileMenu] = useState(false);
+  const [showEditMenu, setShowEditMenu] = useState(false);
+  const [consoleHeight, setConsoleHeight] = useState(200);
+  const [isDraggingConsole, setIsDraggingConsole] = useState(false);
+  const [draggedJobIndex, setDraggedJobIndex] = useState<number | null>(null);
   
   // App Settings State
   const [isAppSettingsOpen, setIsAppSettingsOpen] = useState(false);
@@ -82,6 +87,43 @@ export default function App() {
   });
 
   const logEndRef = useRef<HTMLDivElement>(null);
+  const headerRef = useRef<HTMLDivElement>(null);
+
+  // Handle click outside to close menus
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (headerRef.current && !headerRef.current.contains(event.target as Node)) {
+        setShowFileMenu(false);
+        setShowEditMenu(false);
+        setShowThemeMenu(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  // Handle console dragging
+  useEffect(() => {
+    const handleMouseMove = (e: MouseEvent) => {
+      if (!isDraggingConsole) return;
+      const newHeight = window.innerHeight - e.clientY - 24; // 24 is footer height
+      setConsoleHeight(Math.max(100, Math.min(newHeight, window.innerHeight - 100)));
+    };
+
+    const handleMouseUp = () => {
+      setIsDraggingConsole(false);
+    };
+
+    if (isDraggingConsole) {
+      document.addEventListener('mousemove', handleMouseMove);
+      document.addEventListener('mouseup', handleMouseUp);
+    }
+
+    return () => {
+      document.removeEventListener('mousemove', handleMouseMove);
+      document.removeEventListener('mouseup', handleMouseUp);
+    };
+  }, [isDraggingConsole]);
 
   // Fetch App Settings
   useEffect(() => {
@@ -417,8 +459,6 @@ export default function App() {
   };
 
   const [showHelp, setShowHelp] = useState(false);
-  const [showFileMenu, setShowFileMenu] = useState(false);
-  const [showEditMenu, setShowEditMenu] = useState(false);
   const [maxThreads, setMaxThreads] = useState(8);
 
   useEffect(() => {
@@ -432,7 +472,7 @@ export default function App() {
 
   return (
     <div 
-      className="min-h-screen flex flex-col font-sans transition-colors duration-300"
+      className="h-screen flex flex-col font-sans transition-colors duration-300"
       style={{ 
         backgroundColor: activeTheme.colors.bg, 
         color: activeTheme.colors.text 
@@ -452,7 +492,7 @@ export default function App() {
       {/* Help Modal */}
       <AnimatePresence>
         {showHelp && (
-          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black bg-opacity-50 backdrop-blur-sm">
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 backdrop-blur-md" style={{ backgroundColor: `${activeTheme.colors.bg}80` }}>
             <motion.div 
               initial={{ scale: 0.9, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
@@ -464,7 +504,7 @@ export default function App() {
                 <h2 className="text-2xl font-bold flex items-center gap-2">
                   <AlertCircle className="w-6 h-6" /> Compression Guide
                 </h2>
-                <button onClick={() => setShowHelp(false)} className="p-2 hover:bg-opacity-10 hover:bg-black rounded-full">
+                <button onClick={() => setShowHelp(false)} className="p-2 theme-hover rounded-full">
                   <X className="w-6 h-6" />
                 </button>
               </div>
@@ -500,6 +540,7 @@ export default function App() {
 
       {/* Top Menu Bar */}
       <header 
+        ref={headerRef}
         className="h-10 flex items-center px-4 border-b text-sm select-none"
         style={{ 
           backgroundColor: activeTheme.colors.header, 
@@ -688,7 +729,7 @@ export default function App() {
             }}
           />
           <div 
-            className="flex items-center gap-2 px-3 py-1.5 rounded text-sm font-medium border hover:bg-opacity-10 hover:bg-black"
+            className="flex items-center gap-2 px-3 py-1.5 rounded text-sm font-medium border theme-hover"
             style={{ borderColor: activeTheme.colors.border }}
           >
             <FolderPlus className="w-4 h-4" /> Add Folder
@@ -709,7 +750,7 @@ export default function App() {
         <button 
           onClick={() => setIsProcessing(false)}
           disabled={!isProcessing}
-          className="flex items-center gap-2 px-3 py-1.5 rounded text-sm font-medium border disabled:opacity-50 hover:bg-opacity-10 hover:bg-black"
+          className="flex items-center gap-2 px-3 py-1.5 rounded text-sm font-medium border disabled:opacity-50 theme-hover"
           style={{ borderColor: activeTheme.colors.border }}
         >
           <Square className="w-4 h-4" /> Stop
@@ -719,20 +760,20 @@ export default function App() {
 
         <button 
           onClick={exportQueue}
-          className="p-2 rounded hover:bg-opacity-10 hover:bg-black"
+          className="p-2 rounded theme-hover"
           title="Export Queue"
         >
           <Download className="w-4 h-4" />
         </button>
 
-        <label className="cursor-pointer p-2 rounded hover:bg-opacity-10 hover:bg-black" title="Import Queue">
+        <label className="cursor-pointer p-2 rounded theme-hover" title="Import Queue">
           <input type="file" accept=".json" className="hidden" onChange={importQueue} />
           <Upload className="w-4 h-4" />
         </label>
 
         <button 
           onClick={clearQueue}
-          className="p-2 rounded hover:bg-opacity-10 hover:bg-black text-red-500"
+          className="p-2 rounded theme-hover text-red-500"
           title="Clear Queue"
         >
           <Trash2 className="w-4 h-4" />
@@ -757,10 +798,29 @@ export default function App() {
                 <motion.div
                   layout
                   key={job.id}
+                  draggable
+                  onDragStart={(e) => {
+                    setDraggedJobIndex(index);
+                  }}
+                  onDragOver={(e) => {
+                    e.preventDefault();
+                    if (draggedJobIndex === null || draggedJobIndex === index) return;
+                    
+                    const newJobs = [...jobs];
+                    const draggedJob = newJobs[draggedJobIndex];
+                    newJobs.splice(draggedJobIndex, 1);
+                    newJobs.splice(index, 0, draggedJob);
+                    setJobs(newJobs);
+                    setDraggedJobIndex(index);
+                  }}
+                  onDragEnd={() => {
+                    setDraggedJobIndex(null);
+                  }}
                   onClick={() => setSelectedJobId(job.id)}
                   className={cn(
                     "group flex items-center gap-4 p-3 rounded-lg border transition-all cursor-pointer",
-                    selectedJobId === job.id ? "ring-2" : "hover:bg-opacity-5 hover:bg-black"
+                    selectedJobId === job.id ? "ring-2" : "theme-hover",
+                    draggedJobIndex === index ? "opacity-50" : "opacity-100"
                   )}
                   style={{ 
                     borderColor: activeTheme.colors.border,
@@ -768,17 +828,17 @@ export default function App() {
                     boxShadow: selectedJobId === job.id ? `0 0 0 2px ${activeTheme.colors.accent}` : 'none'
                   }}
                 >
-                  <div className="flex flex-col items-center gap-1">
+                  <div className="flex flex-col items-center gap-1 cursor-grab active:cursor-grabbing">
                     <button 
                       onClick={(e) => { e.stopPropagation(); moveJob(job.id, 'up'); }}
-                      className="p-1 hover:bg-opacity-20 hover:bg-black rounded disabled:opacity-20"
+                      className="p-1 theme-hover rounded disabled:opacity-20"
                       disabled={index === 0}
                     >
                       <ChevronUp className="w-3 h-3" />
                     </button>
                     <button 
                       onClick={(e) => { e.stopPropagation(); moveJob(job.id, 'down'); }}
-                      className="p-1 hover:bg-opacity-20 hover:bg-black rounded disabled:opacity-20"
+                      className="p-1 theme-hover rounded disabled:opacity-20"
                       disabled={index === jobs.length - 1}
                     >
                       <ChevronDown className="w-3 h-3" />
@@ -1049,7 +1109,7 @@ export default function App() {
                       }));
                       addLog('Applied format and settings to all jobs and requeued', 'info');
                     }}
-                    className="w-full py-2 rounded text-sm font-medium border hover:bg-opacity-10 hover:bg-black"
+                    className="w-full py-2 rounded text-sm font-medium border theme-hover"
                     style={{ borderColor: activeTheme.colors.border }}
                   >
                     Apply to All
@@ -1066,14 +1126,21 @@ export default function App() {
         {showLog && (
           <motion.div 
             initial={{ height: 0 }}
-            animate={{ height: 200 }}
+            animate={{ height: consoleHeight }}
             exit={{ height: 0 }}
-            className="border-t flex flex-col overflow-hidden"
+            transition={{ duration: isDraggingConsole ? 0 : 0.3 }}
+            className="border-t flex flex-col overflow-hidden relative"
             style={{ 
               backgroundColor: activeTheme.colors.sidebar, 
-              borderColor: activeTheme.colors.border 
+              borderColor: activeTheme.colors.border,
+              height: consoleHeight
             }}
           >
+            {/* Drag Handle */}
+            <div 
+              className="absolute top-0 left-0 right-0 h-1 cursor-row-resize z-10 hover:bg-black/20"
+              onMouseDown={() => setIsDraggingConsole(true)}
+            />
             <div 
               className="px-4 py-1.5 flex items-center justify-between text-xs font-bold uppercase tracking-widest border-b"
               style={{ borderColor: activeTheme.colors.border }}
@@ -1093,20 +1160,20 @@ export default function App() {
                 <button onClick={() => setLogs([])} className="hover:opacity-70">Clear</button>
               </div>
             </div>
-            <div className="flex-1 overflow-y-auto p-2 font-mono text-xs space-y-1">
+            <div className="flex-1 overflow-auto p-2 font-mono text-xs space-y-1">
               {logs.length === 0 ? (
                 <div className="opacity-30 italic">No logs to display</div>
               ) : (
                 logs.map(log => (
-                  <div key={log.id} className="flex gap-2">
-                    <span className="opacity-30">[{new Date(log.timestamp).toLocaleTimeString()}]</span>
+                  <div key={log.id} className="flex gap-2 whitespace-nowrap">
+                    <span className="opacity-30 shrink-0">[{new Date(log.timestamp).toLocaleTimeString()}]</span>
                     <span className={cn(
                       log.level === 'error' && "text-red-500",
                       log.level === 'warn' && "text-yellow-500",
                       log.level === 'success' && "text-green-500",
                       log.level === 'info' && "opacity-70"
                     )}>
-                      {log.message}
+                      {log.message.replace(/\r/g, '')}
                     </span>
                   </div>
                 ))
@@ -1162,7 +1229,7 @@ export default function App() {
                 </h2>
                 <button 
                   onClick={() => setIsAppSettingsOpen(false)}
-                  className="p-1 hover:bg-black hover:bg-opacity-10 rounded-full"
+                  className="p-1 theme-hover rounded-full"
                 >
                   <X className="w-5 h-5" />
                 </button>
@@ -1193,7 +1260,7 @@ export default function App() {
                           setAppSettings(prev => ({ ...prev, outputDirectory: '/mock/output/directory' }));
                         }
                       }}
-                      className="px-4 py-2 rounded text-sm font-medium border hover:bg-black hover:bg-opacity-10"
+                      className="px-4 py-2 rounded text-sm font-medium border theme-hover"
                       style={{ borderColor: activeTheme.colors.border }}
                     >
                       Browse
@@ -1221,14 +1288,14 @@ export default function App() {
               <div className="mt-8 flex justify-end gap-3">
                 <button 
                   onClick={() => setIsAppSettingsOpen(false)}
-                  className="px-4 py-2 rounded text-sm font-medium hover:bg-black hover:bg-opacity-10"
+                  className="px-4 py-2 rounded text-sm font-medium theme-hover"
                 >
                   Cancel
                 </button>
                 <button 
                   onClick={saveAppSettings}
-                  className="px-4 py-2 rounded text-sm font-medium text-white"
-                  style={{ backgroundColor: activeTheme.colors.accent }}
+                  className="px-4 py-2 rounded text-sm font-medium hover:brightness-110"
+                  style={{ backgroundColor: activeTheme.colors.accent, color: activeTheme.colors.accentText }}
                 >
                   Save Settings
                 </button>
