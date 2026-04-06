@@ -922,9 +922,13 @@ export default function App() {
                       </span>
                     </div>
                     {job.status === 'Processing' && (
-                      <div className="mt-2 h-1.5 w-full bg-black bg-opacity-10 rounded-full overflow-hidden">
+                      <div 
+                        className="mt-2 h-1.5 w-full rounded-full overflow-hidden"
+                        style={{ backgroundColor: activeTheme.colors.border }}
+                      >
                         <motion.div 
-                          className="h-full bg-blue-500"
+                          className="h-full"
+                          style={{ backgroundColor: activeTheme.colors.accent }}
                           initial={{ width: 0 }}
                           animate={{ width: `${job.progress}%` }}
                         />
