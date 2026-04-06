@@ -1257,7 +1257,7 @@ export default function App() {
                 <div className="opacity-30 italic">No logs to display</div>
               ) : (
                 logs.map(log => (
-                  <div key={log.id} className="flex gap-2 whitespace-nowrap">
+                  <div key={log.id} className="flex gap-2 whitespace-pre-wrap break-words">
                     <span className="opacity-30 shrink-0">[{new Date(log.timestamp).toLocaleTimeString()}]</span>
                     <span className={cn(
                       log.level === 'error' && "text-red-500",

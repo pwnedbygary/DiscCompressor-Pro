@@ -139,9 +139,6 @@ ipcMain.handle('process-file', async (event, { jobId, fileName, type, settings, 
       cmd = 'chdman';
       const extractCmd = settings.extractFormat === 'BIN/CUE' ? 'extractcd' : 'extractdvd';
       args = [extractCmd, '-i', inputPath, '-o', outputPath, '-f'];
-      if (settings.threads) {
-        args.push('--numprocessors', settings.threads.toString());
-      }
     } else {
       cmd = 'maxcso';
       args = ['--decompress', inputPath, '-o', outputPath];
