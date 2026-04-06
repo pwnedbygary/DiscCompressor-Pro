@@ -1,4 +1,4 @@
-export type JobType = 'CHD' | 'CSO' | 'CSOv2' | 'ZSO';
+export type JobType = 'CHD' | 'CSO' | 'CSOv2' | 'ZSO' | 'Extract' | 'Info' | 'Verify';
 export type JobStatus = 'Pending' | 'Processing' | 'Completed' | 'Error';
 
 export interface CompressionSettings {
@@ -9,6 +9,9 @@ export interface CompressionSettings {
   // CSO/ZSO specific
   compressionLevel: number;
   threads: number;
+
+  // Extract specific
+  extractFormat?: 'ISO' | 'BIN/CUE';
 }
 
 export interface Job {

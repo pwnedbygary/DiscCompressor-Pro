@@ -82,6 +82,18 @@ ipcMain.handle('save-settings', (event, newSettings) => {
 });
 
 // --- Processing Logic ---
+const activeProcesses = new Map();
+
+ipcMain.handle('cancel-job', (event, jobId) => {
+  const child = activeProcesses.get(jobId);
+  if (child) {
+    child.kill();
+    activeProcesses.delete(jobId);
+    return true;
+  }
+  return false;
+});
+
 ipcMain.handle('process-file', async (event, { jobId, fileName, type, settings, inputPath }) => {
   if (!inputPath) {
     throw new Error('inputPath is required');
@@ -100,8 +112,11 @@ ipcMain.handle('process-file', async (event, { jobId, fileName, type, settings, 
   else if (type === 'ZSO') outputExt = '.zso';
   else if (type === 'JSO') outputExt = '.jso';
   else if (type === 'DAX') outputExt = '.dax';
+  else if (type === 'Extract') {
+    outputExt = settings.extractFormat === 'BIN/CUE' ? '.cue' : '.iso';
+  }
   
-  const outputPath = path.join(outputDir, `${baseName}${outputExt}`);
+  const outputPath = (type === 'Info' || type === 'Verify') ? null : path.join(outputDir, `${baseName}${outputExt}`);
   
   let cmd = '';
   let args = [];
@@ -116,6 +131,28 @@ ipcMain.handle('process-file', async (event, { jobId, fileName, type, settings, 
     if (settings.chdAlgorithms && settings.chdAlgorithms.length > 0) {
       args.push('-c', settings.chdAlgorithms.join(','));
     }
+    if (settings.threads) {
+      args.push('--numprocessors', settings.threads.toString());
+    }
+  } else if (type === 'Extract') {
+    if (ext.toLowerCase() === '.chd') {
+      cmd = 'chdman';
+      const extractCmd = settings.extractFormat === 'BIN/CUE' ? 'extractcd' : 'extractdvd';
+      args = [extractCmd, '-i', inputPath, '-o', outputPath, '-f'];
+      if (settings.threads) {
+        args.push('--numprocessors', settings.threads.toString());
+      }
+    } else {
+      cmd = 'maxcso';
+      args = ['--decompress', inputPath, '-o', outputPath];
+      if (settings.threads) args.push('--threads=' + settings.threads);
+    }
+  } else if (type === 'Info') {
+    cmd = 'chdman';
+    args = ['info', '-i', inputPath];
+  } else if (type === 'Verify') {
+    cmd = 'chdman';
+    args = ['verify', '-i', inputPath];
   } else {
     // Assume maxcso for CSO/ZSO
     cmd = 'maxcso';
@@ -123,6 +160,7 @@ ipcMain.handle('process-file', async (event, { jobId, fileName, type, settings, 
     if (type === 'ZSO') args.push('--format=zso');
     if (type === 'JSO') args.push('--format=jso');
     if (type === 'DAX') args.push('--format=dax');
+    if (settings.threads) args.push('--threads=' + settings.threads);
     args.push(inputPath, '-o', outputPath);
   }
 
@@ -135,6 +173,7 @@ ipcMain.handle('process-file', async (event, { jobId, fileName, type, settings, 
   sendEvent('log', { level: 'info', message: `Executing: ${cmd} ${args.join(' ')}` });
 
   const child = spawn(cmd, args);
+  activeProcesses.set(jobId, child);
   
   child.stdout.on('data', (data) => {
     const msg = data.toString().trim();
@@ -159,10 +198,14 @@ ipcMain.handle('process-file', async (event, { jobId, fileName, type, settings, 
     sendEvent('error', { message: err.message });
   });
   
-  child.on('close', (code) => {
+  child.on('close', (code, signal) => {
+    activeProcesses.delete(jobId);
     if (code === 0) {
-      sendEvent('log', { level: 'info', message: `Successfully created ${outputPath}` });
+      sendEvent('log', { level: 'info', message: `Successfully finished ${outputPath || 'operation'}` });
       sendEvent('complete', { outputPath });
+    } else if (code === null || signal === 'SIGTERM') {
+      sendEvent('log', { level: 'warn', message: `Process was cancelled` });
+      sendEvent('error', { message: `Cancelled` });
     } else {
       sendEvent('log', { level: 'error', message: `Process exited with code ${code}` });
       sendEvent('error', { message: `Process exited with code ${code}` });

@@ -193,21 +193,27 @@ export default function App() {
   const onDrop = useCallback((acceptedFiles: File[]) => {
     const validJobs = acceptedFiles.filter(f => {
       const name = f.name.toLowerCase();
-      return name.endsWith('.cue') || name.endsWith('.iso');
+      return name.endsWith('.cue') || name.endsWith('.iso') || name.endsWith('.chd') || name.endsWith('.cso') || name.endsWith('.zso');
     });
 
     const otherFiles = acceptedFiles.filter(f => {
       const name = f.name.toLowerCase();
-      return !name.endsWith('.cue') && !name.endsWith('.iso');
+      return !name.endsWith('.cue') && !name.endsWith('.iso') && !name.endsWith('.chd') && !name.endsWith('.cso') && !name.endsWith('.zso');
     });
 
     setExtraFiles(prev => [...prev, ...otherFiles]);
 
     const newJobs: Job[] = validJobs.map(file => {
-      const isCue = file.name.toLowerCase().endsWith('.cue');
+      const name = file.name.toLowerCase();
+      const isCue = name.endsWith('.cue');
+      const isCompressed = name.endsWith('.chd') || name.endsWith('.cso') || name.endsWith('.zso');
       
       const fileType = isCue ? 'CD' : 'DVD';
-      const defaultType: JobType = fileType === 'CD' ? 'CHD' : 'CSO';
+      
+      let defaultType: JobType = appSettings.defaultFormat as JobType;
+      if (isCompressed) {
+        defaultType = 'Extract';
+      }
 
       // Set defaults based on MAME/chdman best practices
       const chdAlgorithms = fileType === 'CD' 
@@ -219,13 +225,14 @@ export default function App() {
         fileName: file.name,
         fileSize: file.size,
         fileType,
-        type: appSettings.defaultFormat as JobType,
+        type: defaultType,
         status: 'Pending',
         progress: 0,
         settings: { 
           ...DEFAULT_SETTINGS,
           chdAlgorithms,
-          hunkSize: fileType === 'CD' ? 2448 : 4096 // Standard hunk sizes
+          hunkSize: fileType === 'CD' ? 2448 : 4096, // Standard hunk sizes
+          extractFormat: name.endsWith('.chd') ? 'BIN/CUE' : 'ISO'
         },
         addedAt: Date.now(),
         file: file,
@@ -245,13 +252,27 @@ export default function App() {
   const { getRootProps, getInputProps, isDragActive } = useDropzone(dropzoneOptions);
 
   // Actions
-  const removeJob = (id: string) => {
+  const removeJob = async (id: string) => {
+    const job = jobs.find(j => j.id === id);
+    if (job && job.status === 'Processing') {
+      const ipcRenderer = getIpcRenderer();
+      if (ipcRenderer) {
+        await ipcRenderer.invoke('cancel-job', id);
+      }
+    }
     setJobs(prev => prev.filter(j => j.id !== id));
     if (selectedJobId === id) setSelectedJobId(null);
     addLog('Job removed from queue', 'warn');
   };
 
-  const clearQueue = () => {
+  const clearQueue = async () => {
+    const ipcRenderer = getIpcRenderer();
+    if (ipcRenderer) {
+      const processingJobs = jobs.filter(j => j.status === 'Processing');
+      for (const job of processingJobs) {
+        await ipcRenderer.invoke('cancel-job', job.id);
+      }
+    }
     setJobs([]);
     setSelectedJobId(null);
     addLog('Queue cleared', 'warn');
@@ -344,6 +365,23 @@ export default function App() {
     addLog(`Duplicated job ${jobToCopy.fileName}`, 'info');
   };
 
+  const isProcessingRef = useRef(isProcessing);
+  useEffect(() => {
+    isProcessingRef.current = isProcessing;
+  }, [isProcessing]);
+
+  const stopProcessing = async () => {
+    setIsProcessing(false);
+    addLog('Stopping queue...', 'warn');
+    const ipcRenderer = getIpcRenderer();
+    if (ipcRenderer) {
+      const processingJobs = jobs.filter(j => j.status === 'Processing');
+      for (const job of processingJobs) {
+        await ipcRenderer.invoke('cancel-job', job.id);
+      }
+    }
+  };
+
   const startProcessing = async () => {
     if (isProcessing || jobs.length === 0) return;
     setIsProcessing(true);
@@ -358,6 +396,10 @@ export default function App() {
 
     // 1. Process each job sequentially
     for (const job of pendingJobs) {
+      if (!isProcessingRef.current) {
+        break; // Stop if user clicked Stop
+      }
+      
       const ipcRenderer = getIpcRenderer();
       
       if (!ipcRenderer) {
@@ -368,6 +410,12 @@ export default function App() {
         await new Promise<void>((resolve) => {
           let progress = 0;
           const interval = setInterval(() => {
+            if (!isProcessingRef.current) {
+              clearInterval(interval);
+              setJobs(prev => prev.map(j => j.id === job.id ? { ...j, status: 'Pending', progress: 0 } : j));
+              resolve();
+              return;
+            }
             progress += Math.random() * 15;
             if (progress >= 100) {
               progress = 100;
@@ -403,7 +451,9 @@ export default function App() {
             ipcRenderer.removeListener(`job-event-${job.id}`, handleJobEvent);
             resolve();
           } else if (type === 'error') {
-            setJobs(prev => prev.map(j => j.id === job.id ? { ...j, status: 'Error', error: data.message } : j));
+            // If it was cancelled, we might want to set it back to pending or error.
+            const newStatus = data.message === 'Cancelled' ? 'Pending' : 'Error';
+            setJobs(prev => prev.map(j => j.id === job.id ? { ...j, status: newStatus, error: data.message } : j));
             ipcRenderer.removeListener(`job-event-${job.id}`, handleJobEvent);
             resolve();
           }
@@ -748,7 +798,7 @@ export default function App() {
         </button>
 
         <button 
-          onClick={() => setIsProcessing(false)}
+          onClick={stopProcessing}
           disabled={!isProcessing}
           className="flex items-center gap-2 px-3 py-1.5 rounded text-sm font-medium border disabled:opacity-50 theme-hover"
           style={{ borderColor: activeTheme.colors.border }}
@@ -773,7 +823,7 @@ export default function App() {
 
         <button 
           onClick={clearQueue}
-          className="p-2 rounded theme-hover text-red-500"
+          className="p-2 rounded hover:bg-red-500 hover:text-white transition-colors"
           title="Clear Queue"
         >
           <Trash2 className="w-4 h-4" />
@@ -852,7 +902,7 @@ export default function App() {
                     </div>
                     <div className="flex items-center gap-3 text-xs">
                       <span className="flex items-center gap-1">
-                        {job.fileType === 'CD' ? 'CD (BIN/CUE)' : 'DVD (ISO)'}
+                        {job.fileName.split('.').pop()?.toUpperCase()}
                         <ArrowRight className="w-3 h-3" />
                         <span className="font-bold text-accent">{job.type}</span>
                       </span>
@@ -886,7 +936,7 @@ export default function App() {
                         href={job.downloadUrl}
                         download
                         onClick={(e) => e.stopPropagation()}
-                        className="p-2 hover:bg-green-500 hover:text-white rounded transition-colors"
+                        className="p-2 theme-hover rounded transition-colors"
                         title="Download Result"
                       >
                         <Download className="w-4 h-4" />
@@ -894,7 +944,7 @@ export default function App() {
                     )}
                     <button 
                       onClick={(e) => { e.stopPropagation(); duplicateJob(job.id); }}
-                      className="p-2 hover:bg-blue-500 hover:text-white rounded transition-colors"
+                      className="p-2 theme-hover rounded transition-colors"
                       title="Duplicate Job"
                     >
                       <Copy className="w-4 h-4" />
@@ -965,6 +1015,9 @@ export default function App() {
                     <option value="CSO">CSO (PSP/PS2)</option>
                     <option value="CSOv2">CSOv2 (Zlib/LZMA)</option>
                     <option value="ZSO">ZSO (Zstandard)</option>
+                    <option value="Extract">Extract (Decompress)</option>
+                    <option value="Info">Info (CHDMAN)</option>
+                    <option value="Verify">Verify (CHDMAN)</option>
                   </select>
                 </section>
 
@@ -1026,7 +1079,44 @@ export default function App() {
                       </div>
                     </section>
                   </>
-                ) : (
+                ) : selectedJob.type === 'Extract' ? (
+                  <>
+                    <section>
+                      <label className="block text-xs font-bold uppercase tracking-wider opacity-50 mb-2">Extract Format</label>
+                      <select 
+                        value={selectedJob.settings.extractFormat || 'ISO'}
+                        onChange={(e) => updateJobSettings(selectedJob.id, { extractFormat: e.target.value as 'ISO' | 'BIN/CUE' })}
+                        className="w-full bg-transparent border rounded px-3 py-2 text-sm focus:outline-none focus:ring-1 theme-select"
+                        style={{ borderColor: activeTheme.colors.border, ringColor: activeTheme.colors.accent }}
+                      >
+                        <option value="ISO">ISO</option>
+                        <option value="BIN/CUE">BIN/CUE</option>
+                      </select>
+                    </section>
+                    <section>
+                      <label className="block text-xs font-bold uppercase tracking-wider opacity-50 mb-2">
+                        Threads: {selectedJob.settings.threads}
+                      </label>
+                      <input 
+                        type="range"
+                        min="1"
+                        max={maxThreads}
+                        step="1"
+                        value={selectedJob.settings.threads}
+                        onChange={(e) => updateJobSettings(selectedJob.id, { threads: parseInt(e.target.value) })}
+                        className="w-full h-1.5 rounded-lg appearance-none cursor-pointer"
+                        style={{ backgroundColor: activeTheme.colors.border }}
+                      />
+                      <div className="flex justify-between text-[10px] mt-1 opacity-50">
+                        {Array.from({ length: maxThreads }, (_, i) => i + 1).map(n => (
+                          <span key={n}>
+                            {n === 1 || n === maxThreads || n % 4 === 0 ? n : '|'}
+                          </span>
+                        ))}
+                      </div>
+                    </section>
+                  </>
+                ) : selectedJob.type === 'Info' || selectedJob.type === 'Verify' ? null : (
                   <>
                     {/* CSO Compression Level */}
                     <section>
@@ -1281,6 +1371,9 @@ export default function App() {
                     <option value="CSO">CSO (PSP/PS2)</option>
                     <option value="CSOv2">CSOv2</option>
                     <option value="ZSO">ZSO</option>
+                    <option value="Extract">Extract (Decompress)</option>
+                    <option value="Info">Info (CHDMAN)</option>
+                    <option value="Verify">Verify (CHDMAN)</option>
                   </select>
                 </div>
               </div>
