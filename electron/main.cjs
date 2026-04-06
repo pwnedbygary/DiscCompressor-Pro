@@ -13,6 +13,7 @@ function createWindow() {
     width: 1200,
     height: 800,
     title: "DiscCompressor Pro",
+    icon: path.join(__dirname, '../build/icon.png'),
     webPreferences: {
       nodeIntegration: true,
       contextIsolation: false
@@ -190,9 +191,11 @@ ipcMain.handle('process-file', async (event, { jobId, fileName, type, settings, 
   const child = spawn(cmd, args);
   activeProcesses.set(jobId, child);
   
-  child.stdout.on('data', (data) => {
+  const handleOutput = (data, isError) => {
     const msg = data.toString().trim();
-    if (msg) sendEvent('log', { level: 'info', message: msg });
+    if (!msg) return;
+    
+    sendEvent('log', { level: isError ? 'warn' : 'info', message: msg });
     
     if (msg.includes('%')) {
       const match = msg.match(/(\d+(?:\.\d+)?)%/);
@@ -200,12 +203,10 @@ ipcMain.handle('process-file', async (event, { jobId, fileName, type, settings, 
         sendEvent('progress', { progress: parseFloat(match[1]) });
       }
     }
-  });
-  
-  child.stderr.on('data', (data) => {
-    const msg = data.toString().trim();
-    if (msg) sendEvent('log', { level: 'warn', message: msg });
-  });
+  };
+
+  child.stdout.on('data', (data) => handleOutput(data, false));
+  child.stderr.on('data', (data) => handleOutput(data, true));
   
   child.on('error', (err) => {
     sendEvent('log', { level: 'error', message: `Failed to start ${cmd}: ${err.message}` });

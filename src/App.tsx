@@ -87,6 +87,8 @@ export default function App() {
   });
 
   const logEndRef = useRef<HTMLDivElement>(null);
+  const logContainerRef = useRef<HTMLDivElement>(null);
+  const isAutoScrollEnabled = useRef<boolean>(true);
   const headerRef = useRef<HTMLDivElement>(null);
 
   // Handle click outside to close menus
@@ -169,10 +171,17 @@ export default function App() {
 
   // Scroll log to bottom
   useEffect(() => {
-    if (logEndRef.current) {
-      logEndRef.current.scrollIntoView({ behavior: 'smooth' });
+    if (logEndRef.current && isAutoScrollEnabled.current) {
+      logEndRef.current.scrollIntoView({ behavior: 'auto' });
     }
   }, [logs]);
+
+  const handleLogScroll = () => {
+    if (!logContainerRef.current) return;
+    const { scrollTop, scrollHeight, clientHeight } = logContainerRef.current;
+    // If we are within 20px of the bottom, enable auto-scroll
+    isAutoScrollEnabled.current = scrollHeight - scrollTop - clientHeight < 20;
+  };
 
   // Add log entry
   const addLog = useCallback((message: string, level: LogEntry['level'] = 'info') => {
@@ -1245,7 +1254,11 @@ export default function App() {
                 <button onClick={() => setLogs([])} className="hover:opacity-70">Clear</button>
               </div>
             </div>
-            <div className="flex-1 overflow-auto p-2 font-mono text-xs space-y-1">
+            <div 
+              ref={logContainerRef}
+              onScroll={handleLogScroll}
+              className="flex-1 overflow-auto p-2 font-mono text-xs space-y-1"
+            >
               {logs.length === 0 ? (
                 <div className="opacity-30 italic">No logs to display</div>
               ) : (
