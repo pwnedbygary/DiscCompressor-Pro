@@ -926,11 +926,12 @@ export default function App() {
                         className="mt-2 h-1.5 w-full rounded-full overflow-hidden"
                         style={{ backgroundColor: activeTheme.colors.border }}
                       >
-                        <motion.div 
-                          className="h-full"
-                          style={{ backgroundColor: activeTheme.colors.accent }}
-                          initial={{ width: 0 }}
-                          animate={{ width: `${job.progress}%` }}
+                        <div 
+                          className="h-full transition-all duration-300 ease-out"
+                          style={{ 
+                            backgroundColor: activeTheme.colors.accent,
+                            width: `${job.progress}%`
+                          }}
                         />
                       </div>
                     )}
