@@ -1,4 +1,4 @@
-const { app, BrowserWindow, Menu, ipcMain, dialog, Tray } = require('electron');
+const { app, BrowserWindow, Menu, ipcMain, dialog, Tray, nativeImage } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const os = require('os');
@@ -8,6 +8,30 @@ const execPromise = util.promisify(exec);
 
 let mainWindow;
 let tray = null;
+
+const gotTheLock = app.requestSingleInstanceLock();
+
+if (!gotTheLock) {
+  app.quit();
+} else {
+  app.on('second-instance', (event, commandLine, workingDirectory) => {
+    // Someone tried to run a second instance, we should focus our window.
+    if (mainWindow) {
+      if (!mainWindow.isVisible()) mainWindow.show();
+      if (mainWindow.isMinimized()) mainWindow.restore();
+      mainWindow.focus();
+    }
+  });
+
+  app.whenReady().then(() => {
+    createWindow();
+    createTray();
+  });
+
+  app.on('window-all-closed', () => {
+    if (process.platform !== 'darwin') app.quit();
+  });
+}
 
 function createWindow() {
   mainWindow = new BrowserWindow({
@@ -48,9 +72,18 @@ function createWindow() {
 }
 
 function createTray() {
-  tray = new Tray(path.join(__dirname, '../build/icon.png'));
+  const iconPath = path.join(__dirname, '../build/icon.png');
+  const trayIcon = nativeImage.createFromPath(iconPath);
+  tray = new Tray(trayIcon);
   const contextMenu = Menu.buildFromTemplate([
-    { label: 'Show App', click: () => mainWindow.show() },
+    { label: 'Show App', click: () => {
+        if (mainWindow) {
+          mainWindow.show();
+          if (mainWindow.isMinimized()) mainWindow.restore();
+          mainWindow.focus();
+        }
+      } 
+    },
     { label: 'Quit', click: () => {
         app.isQuiting = true;
         app.quit();
@@ -60,7 +93,11 @@ function createTray() {
   tray.setToolTip('DiscCompressor Pro');
   tray.setContextMenu(contextMenu);
   tray.on('click', () => {
-    mainWindow.show();
+    if (mainWindow) {
+      mainWindow.show();
+      if (mainWindow.isMinimized()) mainWindow.restore();
+      mainWindow.focus();
+    }
   });
 }
 
@@ -79,15 +116,6 @@ ipcMain.handle('dialog:openDirectory', async () => {
 // IPC handler to quit app
 ipcMain.on('quit-app', () => {
   app.quit();
-});
-
-app.whenReady().then(() => {
-  createWindow();
-  createTray();
-});
-
-app.on('window-all-closed', () => {
-  if (process.platform !== 'darwin') app.quit();
 });
 
 // --- Settings Management ---

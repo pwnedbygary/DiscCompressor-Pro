@@ -637,7 +637,8 @@ export default function App() {
   const selectedJob = jobs.find(j => j.id === selectedJobId);
 
   const totalSpaceSaved = jobs.reduce((acc, job) => {
-    if (job.status === 'Completed' && job.finalSize && job.finalSize < job.fileSize) {
+    const isCompressionJob = ['CHD', 'CSO', 'CSOv2', 'ZSO'].includes(job.type);
+    if (isCompressionJob && job.status === 'Completed' && job.finalSize && job.finalSize < job.fileSize) {
       return acc + (job.fileSize - job.finalSize);
     }
     return acc;
@@ -1028,7 +1029,7 @@ export default function App() {
                     <div className="flex items-center gap-2 mb-1">
                       <span className="font-medium truncate">{job.fileName}</span>
                       <span className="text-xs opacity-50">{formatBytes(job.fileSize)}</span>
-                      {job.status === 'Completed' && job.finalSize && job.finalSize < job.fileSize && (
+                      {['CHD', 'CSO', 'CSOv2', 'ZSO'].includes(job.type) && job.status === 'Completed' && job.finalSize && job.finalSize < job.fileSize && (
                         <span className="text-xs font-medium" style={{ color: activeTheme.colors.success }}>
                           Saved {formatBytes(job.fileSize - job.finalSize)} ({(100 - (job.finalSize / job.fileSize) * 100).toFixed(1)}%)
                         </span>
