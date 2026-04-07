@@ -50,11 +50,26 @@ const getIpcRenderer = () => {
 
 const getFilePath = (file: File, nativeFiles?: File[]): string => {
   let filePath = '';
+  
+  // Try to find the exact native file first, as wrapper files lose their Electron path binding
+  let actualFile = file;
+  if (nativeFiles && nativeFiles.length > 0) {
+    const exactMatch = nativeFiles.find(nf => nf.name === file.name && nf.size === file.size);
+    if (exactMatch) {
+      actualFile = exactMatch;
+    }
+  }
+
   if (typeof window !== 'undefined' && window.require) {
     try {
       const electron = window.require('electron');
       if (electron.webUtils && electron.webUtils.getPathForFile) {
-        filePath = electron.webUtils.getPathForFile(file);
+        // Try the native file first
+        filePath = electron.webUtils.getPathForFile(actualFile);
+        // Fallback to the wrapper file if native failed
+        if (!filePath && actualFile !== file) {
+          filePath = electron.webUtils.getPathForFile(file);
+        }
       }
     } catch (e) {
       console.warn('Failed to get webUtils:', e);
@@ -66,11 +81,12 @@ const getFilePath = (file: File, nativeFiles?: File[]): string => {
     const exactMatch = nativeFiles.find(nf => nf.name === file.name && nf.size === file.size);
     if (exactMatch && (exactMatch as any).path) {
       filePath = (exactMatch as any).path;
-    } else if ((file as any).path && typeof window !== 'undefined' && window.require) {
+    } else if ((actualFile as any).path && typeof window !== 'undefined' && window.require) {
       try {
         const path = window.require('path');
-        const relativePath = (file as any).path;
-        const parts = relativePath.split(/[/\\]/).filter(Boolean);
+        const relativePath = (actualFile as any).path;
+        // Filter out '.' and empty strings
+        const parts = relativePath.split(/[/\\]/).filter(p => p && p !== '.');
         if (parts.length > 0) {
           const topLevelName = parts[0];
           const parentFolder = nativeFiles.find(nf => nf.name === topLevelName);
@@ -83,6 +99,12 @@ const getFilePath = (file: File, nativeFiles?: File[]): string => {
         console.warn('Failed to resolve path from native files:', e);
       }
     }
+  }
+
+  // If we still don't have a valid absolute path, try the actualFile's path property
+  // which in Electron should be the absolute path (unless overwritten by dropzone)
+  if (!filePath && (actualFile as any).path) {
+    filePath = (actualFile as any).path;
   }
 
   return filePath || (file as any).path || '';
@@ -223,16 +245,30 @@ export default function App() {
   }, []);
 
   const [extraFiles, setExtraFiles] = useState<File[]>([]);
+  const nativeFilesRef = useRef<File[]>([]);
+
+  // Capture native files synchronously during the drop event before the browser clears dataTransfer
+  useEffect(() => {
+    const handleGlobalDrop = (e: DragEvent) => {
+      if (e.dataTransfer && e.dataTransfer.files) {
+        nativeFilesRef.current = Array.from(e.dataTransfer.files);
+      }
+    };
+    window.addEventListener('drop', handleGlobalDrop, true); // Use capture phase
+    return () => window.removeEventListener('drop', handleGlobalDrop, true);
+  }, []);
 
   // Handle file drop
   const onDrop = useCallback((acceptedFiles: File[], fileRejections?: any[], event?: any) => {
     // Try to get native files from event if available, as react-dropzone might wrap them
     // or overwrite the path property which breaks Electron's path resolution
     let nativeFiles: File[] = [];
-    if (event && event.dataTransfer && event.dataTransfer.files) {
+    if (event && event.dataTransfer && event.dataTransfer.files && event.dataTransfer.files.length > 0) {
       nativeFiles = Array.from(event.dataTransfer.files);
-    } else if (event && event.target && event.target.files) {
+    } else if (event && event.target && event.target.files && event.target.files.length > 0) {
       nativeFiles = Array.from(event.target.files);
+    } else if (nativeFilesRef.current.length > 0) {
+      nativeFiles = nativeFilesRef.current;
     } else {
       nativeFiles = acceptedFiles;
     }
