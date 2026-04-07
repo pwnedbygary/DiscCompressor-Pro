@@ -30,7 +30,7 @@ import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
 
 import { Job, JobType, JobStatus, CompressionSettings, Theme, LogEntry } from './types';
-import { DEFAULT_SETTINGS, THEMES, CHD_ALGORITHMS, CD_HUNK_SIZES, DVD_HUNK_SIZES } from './constants';
+import { DEFAULT_SETTINGS, THEMES, CHD_ALGORITHMS, CD_HUNK_SIZES, DVD_HUNK_SIZES, MAXCSO_ALGORITHMS } from './constants';
 
 function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
@@ -1223,6 +1223,30 @@ export default function App() {
                         })}
                       </div>
                     </section>
+
+                    {/* CHD Threads */}
+                    <section>
+                      <label className="block text-xs font-bold uppercase tracking-wider opacity-50 mb-2">
+                        Threads: {selectedJob.settings.threads}
+                      </label>
+                      <input 
+                        type="range"
+                        min="1"
+                        max={maxThreads}
+                        step="1"
+                        value={selectedJob.settings.threads}
+                        onChange={(e) => updateJobSettings(selectedJob.id, { threads: parseInt(e.target.value) })}
+                        className="w-full h-1.5 rounded-lg appearance-none cursor-pointer"
+                        style={{ backgroundColor: activeTheme.colors.border }}
+                      />
+                      <div className="flex justify-between text-[10px] mt-1 opacity-50">
+                        {Array.from({ length: maxThreads }, (_, i) => i + 1).map(n => (
+                          <span key={n}>
+                            {n === 1 || n === maxThreads || n % 4 === 0 ? n : '|'}
+                          </span>
+                        ))}
+                      </div>
+                    </section>
                   </>
                 ) : selectedJob.type === 'Extract' ? (
                   <>
@@ -1268,6 +1292,43 @@ export default function App() {
                       />
                       <div className="flex justify-between text-[10px] mt-1 opacity-50">
                         {[1,2,3,4,5,6,7,8,9].map(n => <span key={n}>{n}</span>)}
+                      </div>
+                    </section>
+
+                    {/* maxcso Algorithms */}
+                    <section>
+                      <label className="block text-xs font-bold uppercase tracking-wider opacity-50 mb-2">Compression Algorithms</label>
+                      <div className="grid grid-cols-1 gap-2">
+                        {MAXCSO_ALGORITHMS.map(algo => {
+                          let isEnabled = true;
+                          if (selectedJob.type === 'CSO' && algo.type === 'lz4') isEnabled = false;
+                          if (selectedJob.type === 'ZSO' && algo.type === 'deflate') isEnabled = false;
+                          
+                          return (
+                            <label 
+                              key={algo.id} 
+                              className={cn(
+                                "flex items-center gap-2 text-sm",
+                                isEnabled ? "cursor-pointer" : "opacity-30 cursor-not-allowed"
+                              )}
+                            >
+                              <input 
+                                type="checkbox"
+                                disabled={!isEnabled}
+                                checked={selectedJob.settings.maxcsoAlgorithms.includes(algo.id)}
+                                onChange={(e) => {
+                                  const current = selectedJob.settings.maxcsoAlgorithms;
+                                  const next = e.target.checked 
+                                    ? [...current, algo.id]
+                                    : current.filter(a => a !== algo.id);
+                                  if (next.length > 0) updateJobSettings(selectedJob.id, { maxcsoAlgorithms: next });
+                                }}
+                                className="rounded"
+                              />
+                              {algo.name}
+                            </label>
+                          );
+                        })}
                       </div>
                     </section>
 

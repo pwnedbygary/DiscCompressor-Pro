@@ -9,6 +9,7 @@ export interface CompressionSettings {
   // CSO/ZSO specific
   compressionLevel: number;
   threads: number;
+  maxcsoAlgorithms: string[];
 
   // Extract specific
   extractFormat?: 'ISO' | 'BIN/CUE';

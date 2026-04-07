@@ -5,7 +5,18 @@ export const DEFAULT_SETTINGS: CompressionSettings = {
   chdAlgorithms: ['zlib'],
   compressionLevel: 9,
   threads: 4,
+  maxcsoAlgorithms: ['fast'],
 };
+
+export const MAXCSO_ALGORITHMS = [
+  { id: 'fast', name: 'fast — Use only basic zlib or lz4 for fastest result', type: 'all' },
+  { id: 'use-zlib', name: 'use-zlib — Enable trials with zlib for deflate compression', type: 'deflate' },
+  { id: 'use-zopfli', name: 'use-zopfli — Enable trials with Zopfli for deflate compression', type: 'deflate' },
+  { id: 'use-7zdeflate', name: 'use-7zdeflate — Enable trials with 7-zip\'s deflate compression', type: 'deflate' },
+  { id: 'use-lz4', name: 'use-lz4 — Enable trials with lz4hc for lz4 compression', type: 'lz4' },
+  { id: 'use-lz4brute', name: 'use-lz4brute — Enable bruteforce trials with lz4hc for lz4 compression', type: 'lz4' },
+  { id: 'use-libdeflate', name: 'use-libdeflate — Enable trials with libdeflate compression', type: 'deflate' },
+];
 
 export const CHD_ALGORITHMS = [
   { id: 'zlib', name: 'zlib — zlib deflate', type: 'DVD' },

@@ -189,10 +189,65 @@ ipcMain.handle('process-file', async (event, { jobId, fileName, type, settings, 
   let cmd = '';
   let args = [];
   
+  const sendEvent = (type, data) => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send(`job-event-${jobId}`, { type, data });
+    }
+  };
+
+  let tempFilesToDelete = [];
+  let actualInputPath = inputPath;
+  const extLower = ext.toLowerCase();
+
+  try {
+    if (type === 'CHD' && ['.cso', '.zso', '.csov2', '.dax', '.jso'].includes(extLower)) {
+      sendEvent('log', { level: 'info', message: `Decompressing ${extLower} to temporary ISO...` });
+      const tempIsoPath = path.join(outputDir, `${baseName}_temp.iso`);
+      await new Promise((resolve, reject) => {
+        const p = spawn('maxcso', ['--decompress', inputPath, '-o', tempIsoPath]);
+        p.on('close', code => {
+          if (code === 0) resolve();
+          else reject(new Error(`Failed to decompress ${extLower}`));
+        });
+      });
+      actualInputPath = tempIsoPath;
+      tempFilesToDelete.push(tempIsoPath);
+    } else if (['CSO', 'CSOv2', 'ZSO'].includes(type)) {
+      if (extLower === '.chd') {
+        sendEvent('log', { level: 'info', message: `Decompressing CHD to temporary ISO...` });
+        const tempIsoPath = path.join(outputDir, `${baseName}_temp.iso`);
+        await new Promise((resolve, reject) => {
+          const p = spawn('chdman', ['extractdvd', '-i', inputPath, '-o', tempIsoPath, '-f']);
+          p.on('close', code => {
+            if (code === 0) resolve();
+            else reject(new Error(`Failed to decompress CHD`));
+          });
+        });
+        actualInputPath = tempIsoPath;
+        tempFilesToDelete.push(tempIsoPath);
+      } else if (['.cso', '.zso', '.csov2', '.dax', '.jso'].includes(extLower) && extLower !== outputExt) {
+        sendEvent('log', { level: 'info', message: `Decompressing ${extLower} to temporary ISO...` });
+        const tempIsoPath = path.join(outputDir, `${baseName}_temp.iso`);
+        await new Promise((resolve, reject) => {
+          const p = spawn('maxcso', ['--decompress', inputPath, '-o', tempIsoPath]);
+          p.on('close', code => {
+            if (code === 0) resolve();
+            else reject(new Error(`Failed to decompress ${extLower}`));
+          });
+        });
+        actualInputPath = tempIsoPath;
+        tempFilesToDelete.push(tempIsoPath);
+      }
+    }
+  } catch (e) {
+    sendEvent('error', { message: e.message });
+    return;
+  }
+  
   if (type === 'CHD') {
     cmd = 'chdman';
-    const createCmd = ext.toLowerCase() === '.iso' ? 'createdvd' : 'createcd';
-    args = [createCmd, '-i', inputPath, '-o', outputPath, '-f'];
+    const createCmd = path.extname(actualInputPath).toLowerCase() === '.iso' ? 'createdvd' : 'createcd';
+    args = [createCmd, '-i', actualInputPath, '-o', outputPath, '-f'];
     if (settings.hunkSize) {
       args.push('-hs', settings.hunkSize.toString());
     }
@@ -203,13 +258,13 @@ ipcMain.handle('process-file', async (event, { jobId, fileName, type, settings, 
       args.push('--numprocessors', settings.threads.toString());
     }
   } else if (type === 'Extract') {
-    if (ext.toLowerCase() === '.chd') {
+    if (extLower === '.chd') {
       cmd = 'chdman';
       let extractCmd = settings.extractFormat === 'BIN/CUE' ? 'extractcd' : 'extractdvd';
       let finalOutputExt = settings.extractFormat === 'BIN/CUE' ? '.cue' : '.iso';
 
       try {
-        const { stdout } = await execPromise(`chdman info -i "${inputPath}"`);
+        const { stdout } = await execPromise(`chdman info -i "${actualInputPath}"`);
         if (stdout.includes("Tag='DVD '")) {
           extractCmd = 'extractdvd';
           finalOutputExt = '.iso';
@@ -222,34 +277,38 @@ ipcMain.handle('process-file', async (event, { jobId, fileName, type, settings, 
       }
 
       outputPath = path.join(outputDir, `${baseName}${finalOutputExt}`);
-      args = [extractCmd, '-i', inputPath, '-o', outputPath, '-f'];
+      args = [extractCmd, '-i', actualInputPath, '-o', outputPath, '-f'];
     } else {
       cmd = 'maxcso';
-      args = ['--decompress', inputPath, '-o', outputPath];
+      args = ['--decompress', actualInputPath, '-o', outputPath];
       if (settings.threads) args.push('--threads=' + settings.threads);
     }
   } else if (type === 'Info') {
     cmd = 'chdman';
-    args = ['info', '-i', inputPath];
+    args = ['info', '-i', actualInputPath];
   } else if (type === 'Verify') {
     cmd = 'chdman';
-    args = ['verify', '-i', inputPath];
+    args = ['verify', '-i', actualInputPath];
   } else {
     // Assume maxcso for CSO/ZSO
     cmd = 'maxcso';
     args = [`--block=2048`];
+    if (type === 'CSOv2') args.push('--format=cso2');
     if (type === 'ZSO') args.push('--format=zso');
     if (type === 'JSO') args.push('--format=jso');
     if (type === 'DAX') args.push('--format=dax');
     if (settings.threads) args.push('--threads=' + settings.threads);
-    args.push(inputPath, '-o', outputPath);
-  }
-
-  const sendEvent = (type, data) => {
-    if (mainWindow && !mainWindow.isDestroyed()) {
-      mainWindow.webContents.send(`job-event-${jobId}`, { type, data });
+    if (settings.maxcsoAlgorithms && settings.maxcsoAlgorithms.length > 0) {
+      settings.maxcsoAlgorithms.forEach(algo => {
+        if (algo !== 'fast') {
+          args.push(`--${algo}`);
+        } else {
+          args.push('--fast');
+        }
+      });
     }
-  };
+    args.push(actualInputPath, '-o', outputPath);
+  }
 
   sendEvent('log', { level: 'info', message: `Executing: ${cmd} ${args.join(' ')}` });
 
@@ -274,6 +333,15 @@ ipcMain.handle('process-file', async (event, { jobId, fileName, type, settings, 
   child.stderr.on('data', (data) => handleOutput(data, true));
   
   child.on('error', (err) => {
+    // Clean up temporary files
+    tempFilesToDelete.forEach(f => {
+      try {
+        if (fs.existsSync(f)) fs.unlinkSync(f);
+      } catch (e) {
+        console.error('Failed to delete temp file', e);
+      }
+    });
+
     sendEvent('log', { level: 'error', message: `Failed to start ${cmd}: ${err.message}` });
     sendEvent('log', { level: 'error', message: `Make sure '${cmd}' is installed and in your PATH.` });
     sendEvent('error', { message: err.message });
@@ -281,6 +349,16 @@ ipcMain.handle('process-file', async (event, { jobId, fileName, type, settings, 
   
   child.on('close', (code, signal) => {
     activeProcesses.delete(jobId);
+    
+    // Clean up temporary files
+    tempFilesToDelete.forEach(f => {
+      try {
+        if (fs.existsSync(f)) fs.unlinkSync(f);
+      } catch (e) {
+        console.error('Failed to delete temp file', e);
+      }
+    });
+
     if (code === 0) {
       sendEvent('log', { level: 'info', message: `Successfully finished ${outputPath || 'operation'}` });
       
@@ -290,7 +368,7 @@ ipcMain.handle('process-file', async (event, { jobId, fileName, type, settings, 
           const outExt = path.extname(outputPath);
           const outBase = path.basename(outputPath, outExt);
           const outDir = path.dirname(outputPath);
-          const match = outBase.match(/^(.*?)\s*\(Disc\s*\d+\)$/i);
+          const match = outBase.match(/^(.*?)\s*[\[\(]Dis[ck]\s*\d+[\]\)]$/i);
           if (match) {
             const gameName = match[1];
             const m3uPath = path.join(outDir, `${gameName}.m3u`);
@@ -298,7 +376,8 @@ ipcMain.handle('process-file', async (event, { jobId, fileName, type, settings, 
             const discFiles = files.filter(f => {
               const fExt = path.extname(f);
               const fBase = path.basename(f, fExt);
-              return fExt === outExt && fBase.toLowerCase().startsWith(gameName.toLowerCase() + ' (disc');
+              const fMatch = fBase.match(/^(.*?)\s*[\[\(]Dis[ck]\s*\d+[\]\)]$/i);
+              return fExt === outExt && fMatch && fMatch[1] === gameName;
             });
             discFiles.sort();
             fs.writeFileSync(m3uPath, discFiles.join('\n'));
