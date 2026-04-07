@@ -48,6 +48,15 @@ const getIpcRenderer = () => {
   return null;
 };
 
+const formatBytes = (bytes: number, decimals = 2) => {
+  if (!+bytes) return '0 Bytes';
+  const k = 1024;
+  const dm = decimals < 0 ? 0 : decimals;
+  const sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB', 'PB', 'EB', 'ZB', 'YB'];
+  const i = Math.floor(Math.log(bytes) / Math.log(k));
+  return `${parseFloat((bytes / Math.pow(k, i)).toFixed(dm))} ${sizes[i]}`;
+};
+
 const getFilePath = (file: File, nativeFiles?: File[]): string => {
   let filePath = '';
   
@@ -989,7 +998,7 @@ export default function App() {
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 mb-1">
                       <span className="font-medium truncate">{job.fileName}</span>
-                      <span className="text-xs opacity-50">{(job.fileSize / (1024 * 1024)).toFixed(2)} MB</span>
+                      <span className="text-xs opacity-50">{formatBytes(job.fileSize)}</span>
                     </div>
                     <div className="flex items-center gap-3 text-xs">
                       <span className="flex items-center gap-1">
