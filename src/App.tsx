@@ -23,6 +23,7 @@ import {
   ArrowRight,
   Copy
 } from 'lucide-react';
+import packageJson from '../package.json';
 import { motion, AnimatePresence } from 'motion/react';
 import { useDropzone, DropzoneOptions } from 'react-dropzone';
 import { clsx, type ClassValue } from 'clsx';
@@ -700,7 +701,7 @@ export default function App() {
         <div className="flex items-center gap-4">
           <div className="font-bold flex items-center gap-2">
             <Disc className="w-4 h-4" />
-            DiscCompressor Pro
+            DiscCompressor Pro <span className="text-xs font-normal opacity-50">v{packageJson.version}</span>
           </div>
           <div className="flex gap-4">
             <div className="relative">
