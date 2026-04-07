@@ -49,17 +49,18 @@ const getIpcRenderer = () => {
 };
 
 const getFilePath = (file: File): string => {
+  let path = '';
   if (typeof window !== 'undefined' && window.require) {
     try {
       const electron = window.require('electron');
       if (electron.webUtils && electron.webUtils.getPathForFile) {
-        return electron.webUtils.getPathForFile(file);
+        path = electron.webUtils.getPathForFile(file);
       }
     } catch (e) {
       console.warn('Failed to get webUtils:', e);
     }
   }
-  return (file as any).path || '';
+  return path || (file as any).path || '';
 };
 
 export default function App() {
