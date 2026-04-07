@@ -1,4 +1,4 @@
-const { app, BrowserWindow, Menu, ipcMain, dialog } = require('electron');
+const { app, BrowserWindow, Menu, ipcMain, dialog, Tray } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const os = require('os');
@@ -7,6 +7,7 @@ const util = require('util');
 const execPromise = util.promisify(exec);
 
 let mainWindow;
+let tray = null;
 
 function createWindow() {
   mainWindow = new BrowserWindow({
@@ -29,6 +30,38 @@ function createWindow() {
   } else {
     mainWindow.loadFile(path.join(__dirname, '..', 'dist', 'index.html'));
   }
+
+  mainWindow.on('minimize', (event) => {
+    if (appSettings.minimizeToTray) {
+      event.preventDefault();
+      mainWindow.hide();
+    }
+  });
+
+  mainWindow.on('close', (event) => {
+    if (!app.isQuiting && appSettings.minimizeToTray) {
+      event.preventDefault();
+      mainWindow.hide();
+    }
+    return false;
+  });
+}
+
+function createTray() {
+  tray = new Tray(path.join(__dirname, '../build/icon.png'));
+  const contextMenu = Menu.buildFromTemplate([
+    { label: 'Show App', click: () => mainWindow.show() },
+    { label: 'Quit', click: () => {
+        app.isQuiting = true;
+        app.quit();
+      }
+    }
+  ]);
+  tray.setToolTip('DiscCompressor Pro');
+  tray.setContextMenu(contextMenu);
+  tray.on('click', () => {
+    mainWindow.show();
+  });
 }
 
 // IPC handler for directory selection
@@ -50,6 +83,7 @@ ipcMain.on('quit-app', () => {
 
 app.whenReady().then(() => {
   createWindow();
+  createTray();
 });
 
 app.on('window-all-closed', () => {
@@ -63,7 +97,10 @@ const settingsPath = path.join(userDataPath, 'settings.json');
 let appSettings = {
   outputDirectory: path.join(os.homedir(), 'DiscCompressorPro_Outputs'),
   defaultFormat: 'CHD',
-  themeId: 'adwaita'
+  themeId: 'adwaita',
+  deleteOriginals: false,
+  autoGenerateM3U: false,
+  minimizeToTray: false
 };
 
 if (fs.existsSync(settingsPath)) {
@@ -218,7 +255,62 @@ ipcMain.handle('process-file', async (event, { jobId, fileName, type, settings, 
     activeProcesses.delete(jobId);
     if (code === 0) {
       sendEvent('log', { level: 'info', message: `Successfully finished ${outputPath || 'operation'}` });
-      sendEvent('complete', { outputPath });
+      
+      // Auto M3U Generation
+      if (appSettings.autoGenerateM3U && outputPath) {
+        try {
+          const outExt = path.extname(outputPath);
+          const outBase = path.basename(outputPath, outExt);
+          const outDir = path.dirname(outputPath);
+          const match = outBase.match(/^(.*?)\s*\(Disc\s*\d+\)$/i);
+          if (match) {
+            const gameName = match[1];
+            const m3uPath = path.join(outDir, `${gameName}.m3u`);
+            const files = fs.readdirSync(outDir);
+            const discFiles = files.filter(f => {
+              const fExt = path.extname(f);
+              const fBase = path.basename(f, fExt);
+              return fExt === outExt && fBase.toLowerCase().startsWith(gameName.toLowerCase() + ' (disc');
+            });
+            discFiles.sort();
+            fs.writeFileSync(m3uPath, discFiles.join('\n'));
+            sendEvent('log', { level: 'success', message: `Generated playlist: ${gameName}.m3u` });
+          }
+        } catch (e) {
+          console.error('Failed to generate M3U', e);
+        }
+      }
+
+      // Delete Originals
+      if (appSettings.deleteOriginals && inputPath && fs.existsSync(inputPath)) {
+        try {
+          let filesToDelete = [inputPath];
+          if (inputPath.toLowerCase().endsWith('.cue')) {
+            const cueContent = fs.readFileSync(inputPath, 'utf8');
+            const binMatches = cueContent.match(/FILE\s+"([^"]+)"/g);
+            if (binMatches) {
+              binMatches.forEach(match => {
+                const binFile = match.match(/FILE\s+"([^"]+)"/)[1];
+                filesToDelete.push(path.join(path.dirname(inputPath), binFile));
+              });
+            }
+          }
+          filesToDelete.forEach(f => {
+            if (fs.existsSync(f)) fs.unlinkSync(f);
+          });
+          sendEvent('log', { level: 'success', message: `Deleted original files` });
+        } catch (e) {
+          console.error('Failed to delete original files', e);
+        }
+      }
+
+      // Get final file size
+      let finalSize = 0;
+      if (outputPath && fs.existsSync(outputPath)) {
+        finalSize = fs.statSync(outputPath).size;
+      }
+
+      sendEvent('complete', { outputPath, finalSize });
     } else if (code === null || signal === 'SIGTERM') {
       sendEvent('log', { level: 'warn', message: `Process was cancelled` });
       sendEvent('error', { message: `Cancelled` });

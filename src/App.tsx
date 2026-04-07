@@ -58,6 +58,18 @@ const formatBytes = (bytes: number, decimals = 2) => {
   return `${parseFloat((bytes / Math.pow(k, i)).toFixed(dm))} ${sizes[i]}`;
 };
 
+const formatETA = (startTime?: number, progress?: number) => {
+  if (!startTime || !progress || progress <= 0 || progress >= 100) return null;
+  const elapsed = Date.now() - startTime;
+  const totalEstimated = elapsed / (progress / 100);
+  const remaining = totalEstimated - elapsed;
+  const seconds = Math.floor(remaining / 1000);
+  if (seconds < 60) return `${seconds}s left`;
+  const minutes = Math.floor(seconds / 60);
+  const remSeconds = seconds % 60;
+  return `${minutes}m ${remSeconds}s left`;
+};
+
 const getFilePath = (file: File, nativeFiles?: File[]): string => {
   let filePath = '';
   
@@ -141,7 +153,10 @@ export default function App() {
   const [appSettings, setAppSettings] = useState({
     outputDirectory: '',
     defaultFormat: 'CHD',
-    themeId: 'adwaita'
+    themeId: 'adwaita',
+    deleteOriginals: false,
+    autoGenerateM3U: false,
+    minimizeToTray: false
   });
 
   const logEndRef = useRef<HTMLDivElement>(null);
@@ -538,7 +553,7 @@ export default function App() {
         continue;
       }
 
-      setJobs(prev => prev.map(j => j.id === job.id ? { ...j, status: 'Processing' } : j));
+      setJobs(prev => prev.map(j => j.id === job.id ? { ...j, status: 'Processing', startTime: Date.now() } : j));
       addLog(`Processing ${job.fileName} to ${job.type}...`, 'info');
 
       await new Promise<void>((resolve) => {
@@ -548,7 +563,7 @@ export default function App() {
           } else if (type === 'progress') {
             setJobs(prev => prev.map(j => j.id === job.id ? { ...j, progress: data.progress } : j));
           } else if (type === 'complete') {
-            setJobs(prev => prev.map(j => j.id === job.id ? { ...j, status: 'Completed', progress: 100, downloadUrl: data.outputPath } : j));
+            setJobs(prev => prev.map(j => j.id === job.id ? { ...j, status: 'Completed', progress: 100, downloadUrl: data.outputPath, finalSize: data.finalSize } : j));
             ipcRenderer.removeListener(`job-event-${job.id}`, handleJobEvent);
             resolve();
           } else if (type === 'error') {
@@ -620,6 +635,13 @@ export default function App() {
   }, []);
 
   const selectedJob = jobs.find(j => j.id === selectedJobId);
+
+  const totalSpaceSaved = jobs.reduce((acc, job) => {
+    if (job.status === 'Completed' && job.finalSize && job.finalSize < job.fileSize) {
+      return acc + (job.fileSize - job.finalSize);
+    }
+    return acc;
+  }, 0);
 
   return (
     <div 
@@ -907,7 +929,13 @@ export default function App() {
           <Square className="w-4 h-4" /> Stop
         </button>
 
-        <div className="flex-1" />
+        <div className="flex-1 flex items-center justify-center">
+          {totalSpaceSaved > 0 && (
+            <span className="text-sm font-medium" style={{ color: activeTheme.colors.success }}>
+              Total Space Saved: {formatBytes(totalSpaceSaved)}
+            </span>
+          )}
+        </div>
 
         <button 
           onClick={exportQueue}
@@ -1000,6 +1028,16 @@ export default function App() {
                     <div className="flex items-center gap-2 mb-1">
                       <span className="font-medium truncate">{job.fileName}</span>
                       <span className="text-xs opacity-50">{formatBytes(job.fileSize)}</span>
+                      {job.status === 'Completed' && job.finalSize && job.finalSize < job.fileSize && (
+                        <span className="text-xs font-medium" style={{ color: activeTheme.colors.success }}>
+                          Saved {formatBytes(job.fileSize - job.finalSize)} ({(100 - (job.finalSize / job.fileSize) * 100).toFixed(1)}%)
+                        </span>
+                      )}
+                      {job.status === 'Processing' && job.startTime && job.progress > 0 && (
+                        <span className="text-xs font-medium opacity-70">
+                          {formatETA(job.startTime, job.progress)}
+                        </span>
+                      )}
                     </div>
                     <div className="flex items-center gap-3 text-xs">
                       <span className="flex items-center gap-1">
@@ -1473,6 +1511,47 @@ export default function App() {
                     <option value="Info">Info (CHDMAN)</option>
                     <option value="Verify">Verify (CHDMAN)</option>
                   </select>
+                </div>
+
+                <div className="space-y-3 pt-2">
+                  <label className="flex items-center gap-3 cursor-pointer">
+                    <input 
+                      type="checkbox" 
+                      checked={appSettings.deleteOriginals}
+                      onChange={(e) => setAppSettings(prev => ({ ...prev, deleteOriginals: e.target.checked }))}
+                      className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                    />
+                    <div>
+                      <div className="text-sm font-medium">Delete Originals on Success</div>
+                      <div className="text-xs opacity-50">Automatically delete the source files after successful compression.</div>
+                    </div>
+                  </label>
+
+                  <label className="flex items-center gap-3 cursor-pointer">
+                    <input 
+                      type="checkbox" 
+                      checked={appSettings.autoGenerateM3U}
+                      onChange={(e) => setAppSettings(prev => ({ ...prev, autoGenerateM3U: e.target.checked }))}
+                      className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                    />
+                    <div>
+                      <div className="text-sm font-medium">Auto-Generate .m3u Playlists</div>
+                      <div className="text-xs opacity-50">Create .m3u files for multi-disc games (e.g., files ending in "Disc 1").</div>
+                    </div>
+                  </label>
+
+                  <label className="flex items-center gap-3 cursor-pointer">
+                    <input 
+                      type="checkbox" 
+                      checked={appSettings.minimizeToTray}
+                      onChange={(e) => setAppSettings(prev => ({ ...prev, minimizeToTray: e.target.checked }))}
+                      className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                    />
+                    <div>
+                      <div className="text-sm font-medium">Minimize to System Tray</div>
+                      <div className="text-xs opacity-50">Keep the app running in the background when closing the window.</div>
+                    </div>
+                  </label>
                 </div>
               </div>
 

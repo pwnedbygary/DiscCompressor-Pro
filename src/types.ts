@@ -25,6 +25,8 @@ export interface Job {
   settings: CompressionSettings;
   error?: string;
   addedAt: number;
+  startTime?: number;
+  finalSize?: number;
   file?: File;
   inputPath?: string;
   downloadUrl?: string;
