@@ -48,19 +48,44 @@ const getIpcRenderer = () => {
   return null;
 };
 
-const getFilePath = (file: File): string => {
-  let path = '';
+const getFilePath = (file: File, nativeFiles?: File[]): string => {
+  let filePath = '';
   if (typeof window !== 'undefined' && window.require) {
     try {
       const electron = window.require('electron');
       if (electron.webUtils && electron.webUtils.getPathForFile) {
-        path = electron.webUtils.getPathForFile(file);
+        filePath = electron.webUtils.getPathForFile(file);
       }
     } catch (e) {
       console.warn('Failed to get webUtils:', e);
     }
   }
-  return path || (file as any).path || '';
+  
+  if (!filePath && nativeFiles && nativeFiles.length > 0) {
+    // Try to resolve from native files
+    const exactMatch = nativeFiles.find(nf => nf.name === file.name && nf.size === file.size);
+    if (exactMatch && (exactMatch as any).path) {
+      filePath = (exactMatch as any).path;
+    } else if ((file as any).path && typeof window !== 'undefined' && window.require) {
+      try {
+        const path = window.require('path');
+        const relativePath = (file as any).path;
+        const parts = relativePath.split(/[/\\]/).filter(Boolean);
+        if (parts.length > 0) {
+          const topLevelName = parts[0];
+          const parentFolder = nativeFiles.find(nf => nf.name === topLevelName);
+          if (parentFolder && (parentFolder as any).path) {
+            const parentDir = path.dirname((parentFolder as any).path);
+            filePath = path.join(parentDir, relativePath);
+          }
+        }
+      } catch (e) {
+        console.warn('Failed to resolve path from native files:', e);
+      }
+    }
+  }
+
+  return filePath || (file as any).path || '';
 };
 
 export default function App() {
@@ -200,15 +225,33 @@ export default function App() {
   const [extraFiles, setExtraFiles] = useState<File[]>([]);
 
   // Handle file drop
-  const onDrop = useCallback((acceptedFiles: File[]) => {
+  const onDrop = useCallback((acceptedFiles: File[], fileRejections?: any[], event?: any) => {
+    // Try to get native files from event if available, as react-dropzone might wrap them
+    // or overwrite the path property which breaks Electron's path resolution
+    let nativeFiles: File[] = [];
+    if (event && event.dataTransfer && event.dataTransfer.files) {
+      nativeFiles = Array.from(event.dataTransfer.files);
+    } else if (event && event.target && event.target.files) {
+      nativeFiles = Array.from(event.target.files);
+    } else {
+      nativeFiles = acceptedFiles;
+    }
+
     const validJobs = acceptedFiles.filter(f => {
       const name = f.name.toLowerCase();
       return name.endsWith('.cue') || name.endsWith('.iso') || name.endsWith('.chd') || name.endsWith('.cso') || name.endsWith('.zso');
+    }).map(f => {
+      // Find the corresponding native file to preserve the original path
+      const nativeFile = nativeFiles.find(nf => nf.name === f.name && nf.size === f.size);
+      return nativeFile || f;
     });
 
     const otherFiles = acceptedFiles.filter(f => {
       const name = f.name.toLowerCase();
       return !name.endsWith('.cue') && !name.endsWith('.iso') && !name.endsWith('.chd') && !name.endsWith('.cso') && !name.endsWith('.zso');
+    }).map(f => {
+      const nativeFile = nativeFiles.find(nf => nf.name === f.name && nf.size === f.size);
+      return nativeFile || f;
     });
 
     setExtraFiles(prev => [...prev, ...otherFiles]);
@@ -246,7 +289,7 @@ export default function App() {
         },
         addedAt: Date.now(),
         file: file,
-        inputPath: getFilePath(file)
+        inputPath: getFilePath(file, nativeFiles)
       };
     });
 
@@ -766,7 +809,7 @@ export default function App() {
             multiple 
             className="hidden" 
             onChange={(e) => {
-              onDrop(Array.from(e.target.files || []));
+              onDrop(Array.from(e.target.files || []), [], e);
               e.target.value = '';
             }}
           />
@@ -786,7 +829,7 @@ export default function App() {
             directory="" 
             className="hidden" 
             onChange={(e) => {
-              onDrop(Array.from(e.target.files || []));
+              onDrop(Array.from(e.target.files || []), [], e);
               e.target.value = '';
             }}
           />
