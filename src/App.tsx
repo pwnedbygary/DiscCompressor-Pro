@@ -284,7 +284,7 @@ export default function App() {
   }, []);
 
   // Handle file drop
-  const onDrop = useCallback((acceptedFiles: File[], fileRejections?: any[], event?: any) => {
+  const onDrop = useCallback(async (acceptedFiles: File[], fileRejections?: any[], event?: any) => {
     // Try to get native files from event if available, as react-dropzone might wrap them
     // or overwrite the path property which breaks Electron's path resolution
     let nativeFiles: File[] = [];
@@ -317,7 +317,9 @@ export default function App() {
 
     setExtraFiles(prev => [...prev, ...otherFiles]);
 
-    const newJobs: Job[] = validJobs.map(file => {
+    const ipcRenderer = getIpcRenderer();
+
+    const newJobs: Job[] = await Promise.all(validJobs.map(async file => {
       const name = file.name.toLowerCase();
       const isCue = name.endsWith('.cue');
       const isCompressed = name.endsWith('.chd') || name.endsWith('.cso') || name.endsWith('.zso');
@@ -334,10 +336,16 @@ export default function App() {
         ? ['cdzl', 'cdlz', 'cdfl'] 
         : ['zlib', 'lzma', 'huff', 'flac'];
 
+      const inputPath = getFilePath(file, nativeFiles);
+      let realFileSize = file.size;
+      if (ipcRenderer && inputPath) {
+        realFileSize = await ipcRenderer.invoke('get-real-file-size', inputPath);
+      }
+
       return {
         id: Math.random().toString(36).substr(2, 9),
         fileName: file.name,
-        fileSize: file.size,
+        fileSize: realFileSize,
         fileType,
         type: defaultType,
         status: 'Pending',
@@ -350,9 +358,9 @@ export default function App() {
         },
         addedAt: Date.now(),
         file: file,
-        inputPath: getFilePath(file, nativeFiles)
+        inputPath
       };
-    });
+    }));
 
     setJobs(prev => [...prev, ...newJobs]);
     addLog(`Added ${newJobs.length} jobs`, 'info');

@@ -33,17 +33,28 @@ if (!gotTheLock) {
   });
 }
 
+function getIconPath() {
+  const pngPath = path.join(__dirname, '../build/icon.png');
+  const svgPath = path.join(__dirname, '../icon.svg');
+  if (fs.existsSync(pngPath)) return pngPath;
+  if (fs.existsSync(svgPath)) return svgPath;
+  return undefined;
+}
+
 function createWindow() {
-  mainWindow = new BrowserWindow({
+  const iconPath = getIconPath();
+  const windowOptions = {
     width: 1200,
     height: 800,
     title: "DiscCompressor Pro",
-    icon: path.join(__dirname, '../build/icon.png'),
     webPreferences: {
       nodeIntegration: true,
       contextIsolation: false
     }
-  });
+  };
+  if (iconPath) windowOptions.icon = iconPath;
+
+  mainWindow = new BrowserWindow(windowOptions);
 
   // Remove native menu
   Menu.setApplicationMenu(null);
@@ -72,8 +83,15 @@ function createWindow() {
 }
 
 function createTray() {
-  const iconPath = path.join(__dirname, '../build/icon.png');
-  const trayIcon = nativeImage.createFromPath(iconPath);
+  const iconPath = getIconPath();
+  if (!iconPath) return; // Don't create tray if no icon is available
+  
+  let trayIcon = nativeImage.createFromPath(iconPath);
+  if (trayIcon.isEmpty()) {
+    console.error('Failed to load tray icon from path:', iconPath);
+  } else {
+    trayIcon = trayIcon.resize({ width: 16, height: 16 });
+  }
   tray = new Tray(trayIcon);
   const contextMenu = Menu.buildFromTemplate([
     { label: 'Show App', click: () => {
@@ -147,6 +165,33 @@ ipcMain.handle('save-settings', (event, newSettings) => {
   appSettings = { ...appSettings, ...newSettings };
   fs.writeFileSync(settingsPath, JSON.stringify(appSettings, null, 2));
   return { success: true };
+});
+
+ipcMain.handle('get-real-file-size', async (event, filePath) => {
+  if (!filePath || !fs.existsSync(filePath)) return 0;
+  
+  let totalSize = 0;
+  try {
+    const stats = fs.statSync(filePath);
+    totalSize += stats.size;
+
+    if (filePath.toLowerCase().endsWith('.cue')) {
+      const cueContent = fs.readFileSync(filePath, 'utf8');
+      const binMatches = cueContent.match(/FILE\s+"([^"]+)"/g);
+      if (binMatches) {
+        binMatches.forEach(match => {
+          const binFile = match.match(/FILE\s+"([^"]+)"/)[1];
+          const binPath = path.join(path.dirname(filePath), binFile);
+          if (fs.existsSync(binPath)) {
+            totalSize += fs.statSync(binPath).size;
+          }
+        });
+      }
+    }
+  } catch (e) {
+    console.error('Failed to get real file size', e);
+  }
+  return totalSize;
 });
 
 // --- Processing Logic ---
