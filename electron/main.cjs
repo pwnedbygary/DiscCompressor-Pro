@@ -34,7 +34,7 @@ if (!gotTheLock) {
 }
 
 function getIconPath() {
-  const pngPath = path.join(__dirname, '../build/icon.png');
+  const pngPath = path.join(__dirname, '../assets/icon.png');
   const svgPath = path.join(__dirname, '../icon.svg');
   if (fs.existsSync(pngPath)) return pngPath;
   if (fs.existsSync(svgPath)) return svgPath;
