@@ -89,8 +89,6 @@ function createTray() {
   let trayIcon = nativeImage.createFromPath(iconPath);
   if (trayIcon.isEmpty()) {
     console.error('Failed to load tray icon from path:', iconPath);
-  } else {
-    trayIcon = trayIcon.resize({ width: 16, height: 16 });
   }
   tray = new Tray(trayIcon);
   const contextMenu = Menu.buildFromTemplate([
