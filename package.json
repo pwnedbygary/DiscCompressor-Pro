@@ -3,7 +3,7 @@
   "author": "DiscCompressor",
   "description": "Disc image compression utility",
   "private": true,
-  "version": "1.2.5",
+  "version": "1.2.6",
   "type": "module",
   "main": "electron/main.cjs",
   "scripts": {
@@ -25,7 +25,7 @@
       "dist/**/*",
       "electron/main.cjs",
       "package.json",
-      "icon.png",
+      "assets/tray-icon.png",
       "icon.svg"
     ],
     "mac": {
@@ -38,7 +38,7 @@
     },
     "linux": {
       "target": "AppImage",
-      "icon": "build/icons"
+      "icon": "build/icon.png"
     }
   },
   "dependencies": {
