@@ -82,11 +82,29 @@ function createWindow() {
   });
 }
 
+function getTrayIconPath() {
+  const pngPath = path.join(__dirname, '../assets/tray-icon-64.png');
+  const fallbackPath = path.join(__dirname, '../assets/tray-icon.png');
+  if (fs.existsSync(pngPath)) return pngPath;
+  if (fs.existsSync(fallbackPath)) return fallbackPath;
+  return undefined;
+}
+
 function createTray() {
-  const iconPath = getIconPath();
+  const iconPath = getTrayIconPath();
   if (!iconPath) return; // Don't create tray if no icon is available
   
-  let trayIcon = nativeImage.createFromPath(iconPath);
+  let trayIcon;
+  try {
+    // Linux AppIndicator often fails to load images directly from an ASAR archive path.
+    // Reading it into a buffer first bypasses this limitation.
+    const iconBuffer = fs.readFileSync(iconPath);
+    trayIcon = nativeImage.createFromBuffer(iconBuffer);
+  } catch (e) {
+    console.error('Failed to read tray icon buffer:', e);
+    trayIcon = nativeImage.createFromPath(iconPath);
+  }
+
   if (trayIcon.isEmpty()) {
     console.error('Failed to load tray icon from path:', iconPath);
   }
