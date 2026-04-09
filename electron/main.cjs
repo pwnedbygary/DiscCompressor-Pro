@@ -83,8 +83,10 @@ function createWindow() {
 }
 
 function getTrayIconPath() {
+  const jpgPath = path.join(__dirname, '../assets/tray-icon-64.jpg');
   const pngPath = path.join(__dirname, '../assets/tray-icon-64.png');
-  const fallbackPath = path.join(__dirname, '../assets/tray-icon.png');
+  const fallbackPath = path.join(__dirname, '../assets/tray-icon.jpg');
+  if (fs.existsSync(jpgPath)) return jpgPath;
   if (fs.existsSync(pngPath)) return pngPath;
   if (fs.existsSync(fallbackPath)) return fallbackPath;
   return undefined;
@@ -92,24 +94,43 @@ function getTrayIconPath() {
 
 function createTray() {
   const iconPath = getTrayIconPath();
-  if (!iconPath) return; // Don't create tray if no icon is available
+  if (!iconPath) {
+    console.error('No tray icon path found!');
+    return;
+  }
   
   let trayIcon;
   try {
-    // The ultimate fix for Linux AppIndicator: it absolutely HATES files inside ASAR archives,
-    // and sometimes even rejects memory Buffers. It wants a real, physical file path on the disk.
-    const tempIconPath = path.join(app.getPath('temp'), 'disccompressor-tray-icon.png');
     const iconBuffer = fs.readFileSync(iconPath);
-    fs.writeFileSync(tempIconPath, iconBuffer);
-    trayIcon = nativeImage.createFromPath(tempIconPath);
+    console.log(`Read icon buffer from ${iconPath}, length: ${iconBuffer.length}`);
+    
+    // Create from Data URL to avoid any file system or ASAR path issues
+    const mimeType = iconPath.endsWith('.jpg') ? 'image/jpeg' : 'image/png';
+    const dataURL = `data:${mimeType};base64,${iconBuffer.toString('base64')}`;
+    trayIcon = nativeImage.createFromDataURL(dataURL);
+    
+    if (trayIcon.isEmpty()) {
+      console.error('createFromDataURL returned empty image. Trying createFromBuffer...');
+      trayIcon = nativeImage.createFromBuffer(iconBuffer);
+    }
+    
+    if (trayIcon.isEmpty()) {
+      console.error('createFromBuffer returned empty image. Trying createFromPath with temp file...');
+      const tempIconPath = path.join(app.getPath('temp'), `disccompressor-tray-icon${path.extname(iconPath)}`);
+      fs.writeFileSync(tempIconPath, iconBuffer);
+      trayIcon = nativeImage.createFromPath(tempIconPath);
+    }
   } catch (e) {
-    console.error('Failed to write temp tray icon:', e);
+    console.error('Failed to create tray icon:', e);
     trayIcon = nativeImage.createFromPath(iconPath);
   }
 
   if (trayIcon.isEmpty()) {
-    console.error('Failed to load tray icon from path:', iconPath);
+    console.error('CRITICAL: Failed to load tray icon completely. Path was:', iconPath);
+  } else {
+    console.log('Tray icon successfully loaded! Size:', trayIcon.getSize());
   }
+  
   tray = new Tray(trayIcon);
   const contextMenu = Menu.buildFromTemplate([
     { label: 'Show App', click: () => {
