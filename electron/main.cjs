@@ -34,15 +34,30 @@ if (!gotTheLock) {
 }
 
 function getIconPath() {
-  const pngPath = path.join(__dirname, '../assets/tray-icon.png');
-  const svgPath = path.join(__dirname, '../icon.svg');
-  if (fs.existsSync(pngPath)) return pngPath;
-  if (fs.existsSync(svgPath)) return svgPath;
+  const buildIcon = path.join(__dirname, '../build/icon.png');
+  if (fs.existsSync(buildIcon)) return buildIcon;
   return undefined;
 }
 
+function getPhysicalIconPath() {
+  const asarIconPath = getIconPath();
+  if (!asarIconPath) return undefined;
+  
+  try {
+    const tempIconPath = path.join(app.getPath('temp'), 'disccompressor-physical-icon.png');
+    // Only write if it doesn't exist or we want to overwrite
+    const iconBuffer = fs.readFileSync(asarIconPath);
+    fs.writeFileSync(tempIconPath, iconBuffer);
+    console.log('Wrote physical icon to:', tempIconPath);
+    return tempIconPath;
+  } catch (e) {
+    console.error('Failed to write physical icon:', e);
+    return asarIconPath;
+  }
+}
+
 function createWindow() {
-  const iconPath = getIconPath();
+  const iconPath = getPhysicalIconPath();
   const windowOptions = {
     width: 1200,
     height: 800,
@@ -82,56 +97,27 @@ function createWindow() {
   });
 }
 
-function getTrayIconPath() {
-  const jpgPath = path.join(__dirname, '../assets/tray-icon-64.jpg');
-  const pngPath = path.join(__dirname, '../assets/tray-icon-64.png');
-  const fallbackPath = path.join(__dirname, '../assets/tray-icon.jpg');
-  if (fs.existsSync(jpgPath)) return jpgPath;
-  if (fs.existsSync(pngPath)) return pngPath;
-  if (fs.existsSync(fallbackPath)) return fallbackPath;
-  return undefined;
-}
+// Removed getTrayIconPath
 
 function createTray() {
-  const iconPath = getTrayIconPath();
-  if (!iconPath) {
-    console.error('No tray icon path found!');
+  const physicalIconPath = getPhysicalIconPath();
+  if (!physicalIconPath) {
+    console.error('No physical tray icon path found!');
     return;
   }
   
-  let trayIcon;
   try {
-    const iconBuffer = fs.readFileSync(iconPath);
-    console.log(`Read icon buffer from ${iconPath}, length: ${iconBuffer.length}`);
-    
-    // Create from Data URL to avoid any file system or ASAR path issues
-    const mimeType = iconPath.endsWith('.jpg') ? 'image/jpeg' : 'image/png';
-    const dataURL = `data:${mimeType};base64,${iconBuffer.toString('base64')}`;
-    trayIcon = nativeImage.createFromDataURL(dataURL);
-    
-    if (trayIcon.isEmpty()) {
-      console.error('createFromDataURL returned empty image. Trying createFromBuffer...');
-      trayIcon = nativeImage.createFromBuffer(iconBuffer);
-    }
-    
-    if (trayIcon.isEmpty()) {
-      console.error('createFromBuffer returned empty image. Trying createFromPath with temp file...');
-      const tempIconPath = path.join(app.getPath('temp'), `disccompressor-tray-icon${path.extname(iconPath)}`);
-      fs.writeFileSync(tempIconPath, iconBuffer);
-      trayIcon = nativeImage.createFromPath(tempIconPath);
-    }
+    console.log('Creating tray with physical path string:', physicalIconPath);
+    // PASS THE STRING DIRECTLY. Do NOT use nativeImage.
+    // This forces GTK/AppIndicator to load the file directly from disk,
+    // bypassing Electron's Chromium image decoder which is failing in this AppImage.
+    tray = new Tray(physicalIconPath);
   } catch (e) {
-    console.error('Failed to create tray icon:', e);
-    trayIcon = nativeImage.createFromPath(iconPath);
+    console.error('Failed to create tray with string path:', e);
+    // Fallback to nativeImage just in case
+    tray = new Tray(nativeImage.createFromPath(physicalIconPath));
   }
 
-  if (trayIcon.isEmpty()) {
-    console.error('CRITICAL: Failed to load tray icon completely. Path was:', iconPath);
-  } else {
-    console.log('Tray icon successfully loaded! Size:', trayIcon.getSize());
-  }
-  
-  tray = new Tray(trayIcon);
   const contextMenu = Menu.buildFromTemplate([
     { label: 'Show App', click: () => {
         if (mainWindow) {
