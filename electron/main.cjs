@@ -96,12 +96,14 @@ function createTray() {
   
   let trayIcon;
   try {
-    // Linux AppIndicator often fails to load images directly from an ASAR archive path.
-    // Reading it into a buffer first bypasses this limitation.
+    // The ultimate fix for Linux AppIndicator: it absolutely HATES files inside ASAR archives,
+    // and sometimes even rejects memory Buffers. It wants a real, physical file path on the disk.
+    const tempIconPath = path.join(app.getPath('temp'), 'disccompressor-tray-icon.png');
     const iconBuffer = fs.readFileSync(iconPath);
-    trayIcon = nativeImage.createFromBuffer(iconBuffer);
+    fs.writeFileSync(tempIconPath, iconBuffer);
+    trayIcon = nativeImage.createFromPath(tempIconPath);
   } catch (e) {
-    console.error('Failed to read tray icon buffer:', e);
+    console.error('Failed to write temp tray icon:', e);
     trayIcon = nativeImage.createFromPath(iconPath);
   }
 
