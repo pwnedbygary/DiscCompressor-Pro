@@ -34,8 +34,10 @@ if (!gotTheLock) {
 }
 
 function getIconPath() {
-  const buildIcon = path.join(__dirname, '../build/icon.png');
-  if (fs.existsSync(buildIcon)) return buildIcon;
+  const pngPath = path.join(__dirname, '../assets/tray-icon-64.png');
+  const fallbackPath = path.join(__dirname, '../assets/tray-icon.png');
+  if (fs.existsSync(pngPath)) return pngPath;
+  if (fs.existsSync(fallbackPath)) return fallbackPath;
   return undefined;
 }
 
@@ -44,12 +46,13 @@ function getPhysicalIconPath() {
   if (!asarIconPath) return undefined;
   
   try {
-    const tempIconPath = path.join(app.getPath('temp'), 'disccompressor-physical-icon.png');
-    // Only write if it doesn't exist or we want to overwrite
+    // Write to userData instead of temp, as some Linux environments restrict AppIndicator from reading /tmp
+    const userDataPath = app.getPath('userData');
+    const physicalPath = path.join(userDataPath, 'disccompressor-tray-icon.png');
     const iconBuffer = fs.readFileSync(asarIconPath);
-    fs.writeFileSync(tempIconPath, iconBuffer);
-    console.log('Wrote physical icon to:', tempIconPath);
-    return tempIconPath;
+    fs.writeFileSync(physicalPath, iconBuffer);
+    console.log('Wrote physical icon to:', physicalPath);
+    return physicalPath;
   } catch (e) {
     console.error('Failed to write physical icon:', e);
     return asarIconPath;
