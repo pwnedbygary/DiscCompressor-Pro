@@ -215,6 +215,26 @@ ipcMain.handle('get-real-file-size', async (event, filePath) => {
           }
         });
       }
+    } else if (filePath.toLowerCase().endsWith('.gdi')) {
+      const gdiContent = fs.readFileSync(filePath, 'utf8');
+      const lines = gdiContent.split('\n');
+      lines.forEach(line => {
+        const parts = line.trim().split(/\s+/);
+        // A typical GDI track line has at least 6 parts: track, lba, type, sector_size, filename, offset
+        if (parts.length >= 6 && !isNaN(parseInt(parts[0]))) {
+          // The filename is usually the 5th part (index 4)
+          // But if it has spaces, it might be quoted. Let's handle basic unquoted first,
+          // or just match .bin/.raw
+          const filenameMatch = line.match(/"([^"]+)"/) || line.match(/([^\s]+\.(?:bin|raw|iso))/i);
+          if (filenameMatch) {
+            const binFile = filenameMatch[1];
+            const binPath = path.join(path.dirname(filePath), binFile);
+            if (fs.existsSync(binPath)) {
+              totalSize += fs.statSync(binPath).size;
+            }
+          }
+        }
+      });
     }
   } catch (e) {
     console.error('Failed to get real file size', e);
@@ -254,7 +274,9 @@ ipcMain.handle('process-file', async (event, { jobId, fileName, type, settings, 
   else if (type === 'JSO') outputExt = '.jso';
   else if (type === 'DAX') outputExt = '.dax';
   else if (type === 'Extract') {
-    outputExt = settings.extractFormat === 'BIN/CUE' ? '.cue' : '.iso';
+    if (settings.extractFormat === 'BIN/CUE') outputExt = '.cue';
+    else if (settings.extractFormat === 'GDI') outputExt = '.gdi';
+    else outputExt = '.iso';
   }
   
   let outputPath = (type === 'Info' || type === 'Verify') ? null : path.join(outputDir, `${baseName}${outputExt}`);
@@ -333,17 +355,30 @@ ipcMain.handle('process-file', async (event, { jobId, fileName, type, settings, 
   } else if (type === 'Extract') {
     if (extLower === '.chd') {
       cmd = 'chdman';
-      let extractCmd = settings.extractFormat === 'BIN/CUE' ? 'extractcd' : 'extractdvd';
-      let finalOutputExt = settings.extractFormat === 'BIN/CUE' ? '.cue' : '.iso';
+      let extractCmd = 'extractdvd';
+      let finalOutputExt = '.iso';
+      if (settings.extractFormat === 'BIN/CUE') {
+        extractCmd = 'extractcd';
+        finalOutputExt = '.cue';
+      } else if (settings.extractFormat === 'GDI') {
+        extractCmd = 'extractcd';
+        finalOutputExt = '.gdi';
+      }
 
       try {
         const { stdout } = await execPromise(`chdman info -i "${actualInputPath}"`);
         if (stdout.includes("Tag='DVD '")) {
           extractCmd = 'extractdvd';
           finalOutputExt = '.iso';
+        } else if (stdout.includes("Tag='GDI '")) {
+          extractCmd = 'extractcd';
+          finalOutputExt = '.gdi';
         } else if (stdout.includes("TRACK:1") || stdout.includes("Tag='CHCD'")) {
           extractCmd = 'extractcd';
-          finalOutputExt = '.cue';
+          // Only override to .cue if it wasn't explicitly set to .gdi
+          if (finalOutputExt !== '.gdi') {
+            finalOutputExt = '.cue';
+          }
         }
       } catch (e) {
         console.error("Failed to get chd info", e);
@@ -474,6 +509,19 @@ ipcMain.handle('process-file', async (event, { jobId, fileName, type, settings, 
                 filesToDelete.push(path.join(path.dirname(inputPath), binFile));
               });
             }
+          } else if (inputPath.toLowerCase().endsWith('.gdi')) {
+            const gdiContent = fs.readFileSync(inputPath, 'utf8');
+            const lines = gdiContent.split('\n');
+            lines.forEach(line => {
+              const parts = line.trim().split(/\s+/);
+              if (parts.length >= 6 && !isNaN(parseInt(parts[0]))) {
+                const filenameMatch = line.match(/"([^"]+)"/) || line.match(/([^\s]+\.(?:bin|raw|iso))/i);
+                if (filenameMatch) {
+                  const binFile = filenameMatch[1];
+                  filesToDelete.push(path.join(path.dirname(inputPath), binFile));
+                }
+              }
+            });
           }
           filesToDelete.forEach(f => {
             if (fs.existsSync(f)) fs.unlinkSync(f);

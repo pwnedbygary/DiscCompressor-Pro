@@ -12,7 +12,7 @@ export interface CompressionSettings {
   maxcsoAlgorithms: string[];
 
   // Extract specific
-  extractFormat?: 'ISO' | 'BIN/CUE';
+  extractFormat?: 'ISO' | 'BIN/CUE' | 'GDI';
 }
 
 export interface Job {

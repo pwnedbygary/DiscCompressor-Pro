@@ -300,7 +300,7 @@ export default function App() {
 
     const validJobs = acceptedFiles.filter(f => {
       const name = f.name.toLowerCase();
-      return name.endsWith('.cue') || name.endsWith('.iso') || name.endsWith('.chd') || name.endsWith('.cso') || name.endsWith('.zso');
+      return name.endsWith('.cue') || name.endsWith('.gdi') || name.endsWith('.iso') || name.endsWith('.chd') || name.endsWith('.cso') || name.endsWith('.zso');
     }).map(f => {
       // Find the corresponding native file to preserve the original path
       const nativeFile = nativeFiles.find(nf => nf.name === f.name && nf.size === f.size);
@@ -309,7 +309,7 @@ export default function App() {
 
     const otherFiles = acceptedFiles.filter(f => {
       const name = f.name.toLowerCase();
-      return !name.endsWith('.cue') && !name.endsWith('.iso') && !name.endsWith('.chd') && !name.endsWith('.cso') && !name.endsWith('.zso');
+      return !name.endsWith('.cue') && !name.endsWith('.gdi') && !name.endsWith('.iso') && !name.endsWith('.chd') && !name.endsWith('.cso') && !name.endsWith('.zso');
     }).map(f => {
       const nativeFile = nativeFiles.find(nf => nf.name === f.name && nf.size === f.size);
       return nativeFile || f;
@@ -321,10 +321,10 @@ export default function App() {
 
     const newJobs: Job[] = await Promise.all(validJobs.map(async file => {
       const name = file.name.toLowerCase();
-      const isCue = name.endsWith('.cue');
+      const isCueOrGdi = name.endsWith('.cue') || name.endsWith('.gdi');
       const isCompressed = name.endsWith('.chd') || name.endsWith('.cso') || name.endsWith('.zso');
       
-      const fileType = isCue ? 'CD' : 'DVD';
+      const fileType = isCueOrGdi ? 'CD' : 'DVD';
       
       let defaultType: JobType = appSettings.defaultFormat as JobType;
       if (isCompressed) {
@@ -353,7 +353,7 @@ export default function App() {
         settings: { 
           ...DEFAULT_SETTINGS,
           chdAlgorithms,
-          hunkSize: fileType === 'CD' ? 2448 : 4096, // Standard hunk sizes
+          hunkSize: name.endsWith('.gdi') ? 2048 : (fileType === 'CD' ? 2448 : 4096), // Standard hunk sizes
           extractFormat: name.endsWith('.chd') ? 'BIN/CUE' : 'ISO'
         },
         addedAt: Date.now(),
@@ -693,7 +693,7 @@ export default function App() {
               <div className="space-y-4 text-sm opacity-90 overflow-y-auto max-h-[60vh] pr-2">
                 <section>
                   <h3 className="font-bold text-accent mb-1">CHD (Compressed Hunks of Data)</h3>
-                  <p>The gold standard for MAME and RetroArch. Supports lossless compression for CD (BIN/CUE) and DVD (ISO). Use 2048 hunk size for CDs and 4096 for DVDs.</p>
+                  <p>The gold standard for MAME and RetroArch. Supports lossless compression for CD (BIN/CUE/GDI) and DVD (ISO). Use 2048 hunk size for Dreamcast GDI, 2448 for CDs, and 4096 for DVDs.</p>
                 </section>
                 <section>
                   <h3 className="font-bold text-accent mb-1">CSO (Compressed ISO)</h3>
@@ -1149,7 +1149,7 @@ export default function App() {
                       className="w-full bg-transparent border rounded px-3 py-2 text-sm focus:outline-none focus:ring-1 theme-select"
                       style={{ borderColor: activeTheme.colors.border, ringColor: activeTheme.colors.accent }}
                     >
-                      <option value="CD">CD (BIN/CUE/ISO)</option>
+                      <option value="CD">CD (BIN/CUE/GDI/ISO)</option>
                       <option value="DVD">DVD (ISO)</option>
                     </select>
                   </section>
@@ -1258,6 +1258,21 @@ export default function App() {
                   </>
                 ) : selectedJob.type === 'Extract' ? (
                   <>
+                    {selectedJob.fileName.toLowerCase().endsWith('.chd') && (
+                      <section>
+                        <label className="block text-xs font-bold uppercase tracking-wider opacity-50 mb-2">Extract Format</label>
+                        <select 
+                          value={selectedJob.settings.extractFormat || 'BIN/CUE'}
+                          onChange={(e) => updateJobSettings(selectedJob.id, { extractFormat: e.target.value as 'ISO' | 'BIN/CUE' | 'GDI' })}
+                          className="w-full bg-transparent border rounded px-3 py-2 text-sm focus:outline-none focus:ring-1 theme-select"
+                          style={{ borderColor: activeTheme.colors.border, ringColor: activeTheme.colors.accent }}
+                        >
+                          <option value="BIN/CUE">BIN/CUE (CD)</option>
+                          <option value="GDI">GDI (Dreamcast)</option>
+                          <option value="ISO">ISO (DVD)</option>
+                        </select>
+                      </section>
+                    )}
                     <section>
                       <label className="block text-xs font-bold uppercase tracking-wider opacity-50 mb-2">
                         Threads: {selectedJob.settings.threads}
