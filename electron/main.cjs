@@ -370,10 +370,10 @@ ipcMain.handle('process-file', async (event, { jobId, fileName, type, settings, 
         if (stdout.includes("Tag='DVD '")) {
           extractCmd = 'extractdvd';
           finalOutputExt = '.iso';
-        } else if (stdout.includes("Tag='GDI '")) {
+        } else if (stdout.includes("Tag='CHGD'") || stdout.includes("Tag='CHGT'")) {
           extractCmd = 'extractcd';
           finalOutputExt = '.gdi';
-        } else if (stdout.includes("TRACK:1") || stdout.includes("Tag='CHCD'")) {
+        } else if (stdout.includes("Tag='CHT2'") || stdout.includes("Tag='CHTR'") || stdout.includes("Tag='CHCD'") || stdout.includes("TRACK:1")) {
           extractCmd = 'extractcd';
           // Only override to .cue if it wasn't explicitly set to .gdi
           if (finalOutputExt !== '.gdi') {
