@@ -368,19 +368,28 @@ ipcMain.handle('process-file', async (event, { jobId, fileName, type, settings, 
       try {
         const { stdout } = await execPromise(`chdman info -i "${actualInputPath}"`);
         if (stdout.includes("Tag='DVD '")) {
+          if (settings.extractFormat === 'GDI' || settings.extractFormat === 'BIN/CUE') {
+            sendEvent('log', { level: 'warn', message: `Warning: ${settings.extractFormat} is not valid for DVD CHDs. Extracting to ISO instead.` });
+          }
           extractCmd = 'extractdvd';
           finalOutputExt = '.iso';
         } else if (stdout.includes("Tag='CHGD'") || stdout.includes("Tag='CHGT'")) {
+          if (settings.extractFormat === 'BIN/CUE') {
+            throw new Error("Cannot extract GDI CHD to BIN/CUE format. Please select GDI extraction format.");
+          }
           extractCmd = 'extractcd';
           finalOutputExt = '.gdi';
         } else if (stdout.includes("Tag='CHT2'") || stdout.includes("Tag='CHTR'") || stdout.includes("Tag='CHCD'") || stdout.includes("TRACK:1")) {
-          extractCmd = 'extractcd';
-          // Only override to .cue if it wasn't explicitly set to .gdi
-          if (finalOutputExt !== '.gdi') {
-            finalOutputExt = '.cue';
+          if (settings.extractFormat === 'GDI') {
+            throw new Error("Cannot extract standard CD CHD to GDI format. Please select BIN/CUE extraction format.");
           }
+          extractCmd = 'extractcd';
+          finalOutputExt = '.cue';
         }
       } catch (e) {
+        if (e.message.includes('Cannot extract')) {
+          throw e; // Rethrow validation errors to fail the job
+        }
         console.error("Failed to get chd info", e);
       }
 
