@@ -21,7 +21,8 @@ import {
   FileCode,
   Disc,
   ArrowRight,
-  Copy
+  Copy,
+  Search
 } from 'lucide-react';
 import packageJson from '../package.json';
 import { motion, AnimatePresence } from 'motion/react';
@@ -137,6 +138,7 @@ export default function App() {
   const [jobs, setJobs] = useState<Job[]>([]);
   const [activeTheme, setActiveTheme] = useState<Theme>(THEMES[0]);
   const [logs, setLogs] = useState<LogEntry[]>([]);
+  const [logSearchQuery, setLogSearchQuery] = useState('');
   const [showLog, setShowLog] = useState(true);
   const [showSettings, setShowSettings] = useState(true);
   const [isProcessing, setIsProcessing] = useState(false);
@@ -258,15 +260,33 @@ export default function App() {
 
   // Add log entry
   const addLog = useCallback((message: string, level: LogEntry['level'] = 'info') => {
-    setLogs(prev => [
-      ...prev,
-      {
-        id: Math.random().toString(36).substr(2, 9),
-        timestamp: Date.now(),
-        level,
-        message,
-      },
-    ]);
+    setLogs(prev => {
+      // If the new message and the last message are both progress updates (e.g. "Compressing, XX% complete..."),
+      // replace the last message instead of appending a new one to prevent log spam.
+      if (prev.length > 0) {
+        const lastLog = prev[prev.length - 1];
+        const isProgressMsg = (msg: string) => msg.startsWith('Compressing,') && msg.includes('% complete');
+        if (isProgressMsg(message) && isProgressMsg(lastLog.message)) {
+          const newLogs = [...prev];
+          newLogs[newLogs.length - 1] = {
+            ...lastLog,
+            timestamp: Date.now(),
+            message,
+          };
+          return newLogs;
+        }
+      }
+      
+      return [
+        ...prev,
+        {
+          id: Math.random().toString(36).substr(2, 9),
+          timestamp: Date.now(),
+          level,
+          message,
+        },
+      ];
+    });
   }, []);
 
   const [extraFiles, setExtraFiles] = useState<File[]>([]);
@@ -1472,24 +1492,64 @@ export default function App() {
               onScroll={handleLogScroll}
               className="flex-1 overflow-auto p-2 font-mono text-xs space-y-1"
             >
-              {logs.length === 0 ? (
+              {logs.filter(log => !logSearchQuery || log.message.toLowerCase().includes(logSearchQuery.toLowerCase())).length === 0 ? (
                 <div className="opacity-30 italic">No logs to display</div>
               ) : (
-                logs.map(log => (
-                  <div key={log.id} className="flex gap-2 whitespace-pre-wrap break-words">
-                    <span className="opacity-30 shrink-0">[{new Date(log.timestamp).toLocaleTimeString()}]</span>
-                    <span className={cn(
-                      log.level === 'error' && "text-red-500",
-                      log.level === 'warn' && "text-yellow-500",
-                      log.level === 'success' && "text-green-500",
-                      log.level === 'info' && "opacity-70"
-                    )}>
-                      {log.message.replace(/\r/g, '')}
-                    </span>
-                  </div>
-                ))
+                logs.filter(log => !logSearchQuery || log.message.toLowerCase().includes(logSearchQuery.toLowerCase())).map(log => {
+                  const message = log.message.replace(/\r/g, '');
+                  let highlightedMessage: React.ReactNode = message;
+                  
+                  if (logSearchQuery) {
+                    // Escape regex special characters
+                    const escapedQuery = logSearchQuery.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+                    const parts = message.split(new RegExp(`(${escapedQuery})`, 'gi'));
+                    highlightedMessage = parts.map((part, i) => 
+                      part.toLowerCase() === logSearchQuery.toLowerCase() ? (
+                        <span key={i} style={{ backgroundColor: activeTheme.colors.accent, color: activeTheme.colors.accentText }}>{part}</span>
+                      ) : part
+                    );
+                  }
+
+                  return (
+                    <div key={log.id} className="flex gap-2 whitespace-pre-wrap break-words">
+                      <span className="opacity-30 shrink-0">[{new Date(log.timestamp).toLocaleTimeString()}]</span>
+                      <span className={cn(
+                        log.level === 'error' && "text-red-500",
+                        log.level === 'warn' && "text-yellow-500",
+                        log.level === 'success' && "text-green-500",
+                        log.level === 'info' && "opacity-70"
+                      )}>
+                        {highlightedMessage}
+                      </span>
+                    </div>
+                  );
+                })
               )}
               <div ref={logEndRef} />
+            </div>
+            
+            {/* Log Search */}
+            <div 
+              className="px-4 py-1.5 flex items-center gap-2 border-t text-xs font-mono"
+              style={{ borderColor: activeTheme.colors.border }}
+            >
+              <Search className="w-3 h-3 opacity-50" />
+              <input
+                type="text"
+                placeholder="Search logs..."
+                value={logSearchQuery}
+                onChange={(e) => setLogSearchQuery(e.target.value)}
+                className="flex-1 bg-transparent border-none outline-none"
+                style={{ color: activeTheme.colors.text }}
+              />
+              {logSearchQuery && (
+                <button 
+                  onClick={() => setLogSearchQuery('')}
+                  className="opacity-50 hover:opacity-100"
+                >
+                  <X className="w-3 h-3" />
+                </button>
+              )}
             </div>
           </motion.div>
         )}

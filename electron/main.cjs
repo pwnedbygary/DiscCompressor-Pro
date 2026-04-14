@@ -423,22 +423,46 @@ ipcMain.handle('process-file', async (event, { jobId, fileName, type, settings, 
   const child = spawn(cmd, args);
   activeProcesses.set(jobId, child);
   
-  const handleOutput = (data, isError) => {
-    const msg = data.toString().trim();
-    if (!msg) return;
+  let stdoutBuffer = '';
+  let stderrBuffer = '';
+
+  const processBuffer = (buffer, isError) => {
+    let lines = buffer.split(/[\r\n]+/);
+    // Keep the last part in the buffer if it doesn't end with a newline/carriage return
+    // Actually, chdman uses \r for progress updates, so we should process all parts
+    // except the last one if it's incomplete. But \r means the line is "complete" for progress.
+    // Let's just split by \r or \n and process all non-empty parts.
+    // Wait, if a chunk ends in the middle of a word, we shouldn't split it.
+    // A better approach:
     
-    sendEvent('log', { level: isError ? 'warn' : 'info', message: msg });
+    // We'll just split by \r or \n. The last element is the incomplete line.
+    const incomplete = lines.pop();
     
-    if (msg.includes('%')) {
-      const match = msg.match(/(\d+(?:\.\d+)?)%/);
-      if (match) {
-        sendEvent('progress', { progress: parseFloat(match[1]) });
+    for (const line of lines) {
+      const msg = line.trim();
+      if (!msg) continue;
+      
+      sendEvent('log', { level: isError ? 'warn' : 'info', message: msg });
+      
+      if (msg.includes('%')) {
+        const match = msg.match(/(\d+(?:\.\d+)?)%/);
+        if (match) {
+          sendEvent('progress', { progress: parseFloat(match[1]) });
+        }
       }
     }
+    return incomplete;
   };
 
-  child.stdout.on('data', (data) => handleOutput(data, false));
-  child.stderr.on('data', (data) => handleOutput(data, true));
+  child.stdout.on('data', (data) => {
+    stdoutBuffer += data.toString();
+    stdoutBuffer = processBuffer(stdoutBuffer, false);
+  });
+  
+  child.stderr.on('data', (data) => {
+    stderrBuffer += data.toString();
+    stderrBuffer = processBuffer(stderrBuffer, true);
+  });
   
   child.on('error', (err) => {
     // Clean up temporary files
@@ -457,6 +481,14 @@ ipcMain.handle('process-file', async (event, { jobId, fileName, type, settings, 
   
   child.on('close', (code, signal) => {
     activeProcesses.delete(jobId);
+    
+    // Process any remaining buffer
+    if (stdoutBuffer.trim()) {
+      sendEvent('log', { level: 'info', message: stdoutBuffer.trim() });
+    }
+    if (stderrBuffer.trim()) {
+      sendEvent('log', { level: 'warn', message: stderrBuffer.trim() });
+    }
     
     // Clean up temporary files
     tempFilesToDelete.forEach(f => {
