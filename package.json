@@ -3,7 +3,7 @@
   "author": "DiscCompressor",
   "description": "Disc image compression utility",
   "private": true,
-  "version": "1.2.15",
+  "version": "1.2.16",
   "type": "module",
   "main": "electron/main.cjs",
   "scripts": {
