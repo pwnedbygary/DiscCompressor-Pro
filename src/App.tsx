@@ -265,7 +265,7 @@ export default function App() {
       // replace the last message instead of appending a new one to prevent log spam.
       if (prev.length > 0) {
         const lastLog = prev[prev.length - 1];
-        const isProgressMsg = (msg: string) => msg.startsWith('Compressing,') && msg.includes('% complete');
+        const isProgressMsg = (msg: string) => (msg.startsWith('Compressing,') || msg.startsWith('Extracting,')) && msg.includes('% complete');
         if (isProgressMsg(message) && isProgressMsg(lastLog.message)) {
           const newLogs = [...prev];
           newLogs[newLogs.length - 1] = {
