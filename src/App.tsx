@@ -146,7 +146,12 @@ export default function App() {
   const [showLog, setShowLog] = useState(true);
   const [showSettings, setShowSettings] = useState(true);
   const [isProcessing, setIsProcessing] = useState(false);
-  const [selectedJobId, setSelectedJobId] = useState<string | null>(null);
+  const [selectedJobIds, setSelectedJobIds] = useState<string[]>([]);
+  const [lastSelectedId, setLastSelectedId] = useState<string | null>(null);
+  const [draftSettings, setDraftSettings] = useState<any>(null);
+  const [isSelecting, setIsSelecting] = useState(false);
+  const [selectionBox, setSelectionBox] = useState<{startX: number, startY: number, currentX: number, currentY: number} | null>(null);
+  const listContainerRef = useRef<HTMLDivElement>(null);
   const [showThemeMenu, setShowThemeMenu] = useState(false);
   const [showFileMenu, setShowFileMenu] = useState(false);
   const [showEditMenu, setShowEditMenu] = useState(false);
@@ -182,6 +187,62 @@ export default function App() {
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
+
+  // Handle drag selection
+  useEffect(() => {
+    const handleMouseMove = (e: MouseEvent) => {
+      if (!isSelecting || !selectionBox) return;
+      setSelectionBox(prev => prev ? { ...prev, currentX: e.clientX, currentY: e.clientY } : null);
+
+      // Calculate intersection
+      if (listContainerRef.current) {
+        const boxLeft = Math.min(selectionBox.startX, e.clientX);
+        const boxRight = Math.max(selectionBox.startX, e.clientX);
+        const boxTop = Math.min(selectionBox.startY, e.clientY);
+        const boxBottom = Math.max(selectionBox.startY, e.clientY);
+
+        const jobElements = listContainerRef.current.querySelectorAll('[data-job-id]');
+        const newSelectedIds: string[] = [];
+        
+        jobElements.forEach(el => {
+          const rect = el.getBoundingClientRect();
+          const isIntersecting = !(
+            rect.right < boxLeft || 
+            rect.left > boxRight || 
+            rect.bottom < boxTop || 
+            rect.top > boxBottom
+          );
+          if (isIntersecting) {
+            const id = el.getAttribute('data-job-id');
+            if (id) newSelectedIds.push(id);
+          }
+        });
+        
+        // If holding shift/ctrl, we might want to merge, but standard drag selection usually overrides unless shift is held.
+        // For simplicity, let's just override during drag.
+        if (e.shiftKey || e.ctrlKey || e.metaKey) {
+          setSelectedJobIds(prev => Array.from(new Set([...prev, ...newSelectedIds])));
+        } else {
+          setSelectedJobIds(newSelectedIds);
+        }
+      }
+    };
+
+    const handleMouseUp = () => {
+      setIsSelecting(false);
+      setSelectionBox(null);
+    };
+
+    if (isSelecting) {
+      document.addEventListener('mousemove', handleMouseMove);
+      document.addEventListener('mouseup', handleMouseUp);
+    }
+
+    return () => {
+      document.removeEventListener('mousemove', handleMouseMove);
+      document.removeEventListener('mouseup', handleMouseUp);
+    };
+  }, [isSelecting, selectionBox]);
 
   // Handle console dragging
   useEffect(() => {
@@ -407,7 +468,8 @@ export default function App() {
       }
     }
     setJobs(prev => prev.filter(j => j.id !== id));
-    if (selectedJobId === id) setSelectedJobId(null);
+    setSelectedJobIds(prev => prev.filter(jId => jId !== id));
+    if (lastSelectedId === id) setLastSelectedId(null);
     addLog('Job removed from queue', 'warn');
   };
 
@@ -420,7 +482,8 @@ export default function App() {
       }
     }
     setJobs([]);
-    setSelectedJobId(null);
+    setSelectedJobIds([]);
+    setLastSelectedId(null);
     addLog('Queue cleared', 'warn');
   };
 
@@ -660,7 +723,20 @@ export default function App() {
     }
   }, []);
 
-  const selectedJob = jobs.find(j => j.id === selectedJobId);
+  const selectedJob = jobs.find(j => j.id === (lastSelectedId || selectedJobIds[0]));
+
+  // Sync draft settings when selected job changes
+  useEffect(() => {
+    if (selectedJob) {
+      setDraftSettings({
+        settings: { ...selectedJob.settings },
+        type: selectedJob.type,
+        fileType: selectedJob.fileType
+      });
+    } else {
+      setDraftSettings(null);
+    }
+  }, [selectedJob?.id, selectedJobIds.length]);
 
   const totalSpaceSaved = jobs.reduce((acc, job) => {
     const isCompressionJob = ['CHD', 'CSO', 'CSOv2', 'ZSO'].includes(job.type);
@@ -991,9 +1067,34 @@ export default function App() {
         <input {...getInputProps()} />
         
         {/* Job Queue */}
-        <div className="flex-1 overflow-y-auto p-4">
+        <div 
+          className="flex-1 overflow-y-auto p-4 relative"
+          ref={listContainerRef}
+          onMouseDown={(e) => {
+            // Only start selection if clicking directly on the container (not on a job)
+            if (e.target === listContainerRef.current) {
+              setIsSelecting(true);
+              setSelectionBox({ startX: e.clientX, startY: e.clientY, currentX: e.clientX, currentY: e.clientY });
+              if (!e.shiftKey && !e.ctrlKey && !e.metaKey) {
+                setSelectedJobIds([]);
+              }
+            }
+          }}
+        >
+          {selectionBox && isSelecting && (
+            <div 
+              className="fixed border bg-blue-500/20 pointer-events-none z-50"
+              style={{
+                left: Math.min(selectionBox.startX, selectionBox.currentX),
+                top: Math.min(selectionBox.startY, selectionBox.currentY),
+                width: Math.abs(selectionBox.currentX - selectionBox.startX),
+                height: Math.abs(selectionBox.currentY - selectionBox.startY),
+                borderColor: activeTheme.colors.accent
+              }}
+            />
+          )}
           {jobs.length === 0 ? (
-            <div className="h-full flex flex-col items-center justify-center opacity-30">
+            <div className="h-full flex flex-col items-center justify-center opacity-30 pointer-events-none">
               <Disc className="w-16 h-16 mb-4" />
               <p className="text-lg font-medium">Queue is empty</p>
               <p className="text-sm">Drag and drop files here to start</p>
@@ -1004,6 +1105,7 @@ export default function App() {
                 <motion.div
                   layout
                   key={job.id}
+                  data-job-id={job.id}
                   draggable
                   onDragStart={(e) => {
                     setDraggedJobIndex(index);
@@ -1022,16 +1124,38 @@ export default function App() {
                   onDragEnd={() => {
                     setDraggedJobIndex(null);
                   }}
-                  onClick={() => setSelectedJobId(job.id)}
+                  onClick={(e) => {
+                    if (e.shiftKey && lastSelectedId) {
+                      const lastIndex = jobs.findIndex(j => j.id === lastSelectedId);
+                      const currentIndex = index;
+                      const start = Math.min(lastIndex, currentIndex);
+                      const end = Math.max(lastIndex, currentIndex);
+                      const rangeIds = jobs.slice(start, end + 1).map(j => j.id);
+                      
+                      if (e.ctrlKey || e.metaKey) {
+                        setSelectedJobIds(prev => Array.from(new Set([...prev, ...rangeIds])));
+                      } else {
+                        setSelectedJobIds(rangeIds);
+                      }
+                    } else if (e.ctrlKey || e.metaKey) {
+                      setSelectedJobIds(prev => 
+                        prev.includes(job.id) ? prev.filter(id => id !== job.id) : [...prev, job.id]
+                      );
+                      setLastSelectedId(job.id);
+                    } else {
+                      setSelectedJobIds([job.id]);
+                      setLastSelectedId(job.id);
+                    }
+                  }}
                   className={cn(
                     "group flex items-center gap-4 p-3 rounded-lg border transition-all cursor-pointer",
-                    selectedJobId === job.id ? "ring-2" : "theme-hover",
+                    selectedJobIds.includes(job.id) ? "ring-2" : "theme-hover",
                     draggedJobIndex === index ? "opacity-50" : "opacity-100"
                   )}
                   style={{ 
                     borderColor: activeTheme.colors.border,
-                    backgroundColor: selectedJobId === job.id ? activeTheme.colors.sidebar : 'transparent',
-                    boxShadow: selectedJobId === job.id ? `0 0 0 2px ${activeTheme.colors.accent}` : 'none'
+                    backgroundColor: selectedJobIds.includes(job.id) ? activeTheme.colors.sidebar : 'transparent',
+                    boxShadow: selectedJobIds.includes(job.id) ? `0 0 0 2px ${activeTheme.colors.accent}` : 'none'
                   }}
                 >
                   <div className="flex flex-col items-center gap-1 cursor-grab active:cursor-grabbing">
@@ -1136,7 +1260,7 @@ export default function App() {
 
         {/* Settings Panel */}
         <AnimatePresence>
-          {showSettings && selectedJob && (
+          {showSettings && selectedJob && draftSettings && (
             <motion.aside 
               initial={{ x: 300, opacity: 0 }}
               animate={{ x: 0, opacity: 1 }}
@@ -1151,19 +1275,31 @@ export default function App() {
                 <h2 className="text-lg font-bold flex items-center gap-2">
                   <Settings className="w-5 h-5" /> Job Settings
                 </h2>
-                <button onClick={() => setSelectedJobId(null)}>
+                <button onClick={() => setSelectedJobIds([])}>
                   <X className="w-4 h-4" />
                 </button>
               </div>
 
               <div className="space-y-6">
                 {/* Source Type */}
-                {selectedJob.type === 'CHD' && (
+                {draftSettings.type === 'CHD' && (
                   <section>
                     <label className="block text-xs font-bold uppercase tracking-wider opacity-50 mb-2">Source Type</label>
                     <select 
-                      value={selectedJob.fileType}
-                      onChange={(e) => updateJobFileType(selectedJob.id, e.target.value as 'CD' | 'DVD')}
+                      value={draftSettings.fileType}
+                      onChange={(e) => {
+                        const newFileType = e.target.value as 'CD' | 'DVD';
+                        let newHunkSize = draftSettings.settings.hunkSize;
+                        if (newFileType === 'CD' && !CD_HUNK_SIZES.includes(newHunkSize)) newHunkSize = 2448;
+                        if (newFileType === 'DVD' && !DVD_HUNK_SIZES.includes(newHunkSize)) newHunkSize = 4096;
+                        const newAlgorithms = newFileType === 'CD' ? ['cdzl', 'cdlz', 'cdfl'] : ['zlib', 'lzma', 'huff', 'flac'];
+                        
+                        setDraftSettings((prev: any) => ({
+                          ...prev,
+                          fileType: newFileType,
+                          settings: { ...prev.settings, hunkSize: newHunkSize, chdAlgorithms: newAlgorithms }
+                        }));
+                      }}
                       className="w-full bg-transparent border rounded px-3 py-2 text-sm focus:outline-none focus:ring-1 theme-select"
                       style={{ borderColor: activeTheme.colors.border, ringColor: activeTheme.colors.accent }}
                     >
@@ -1177,8 +1313,8 @@ export default function App() {
                 <section>
                   <label className="block text-xs font-bold uppercase tracking-wider opacity-50 mb-2">Output Format</label>
                   <select 
-                    value={selectedJob.type}
-                    onChange={(e) => updateJobType(selectedJob.id, e.target.value as JobType)}
+                    value={draftSettings.type}
+                    onChange={(e) => setDraftSettings((prev: any) => ({ ...prev, type: e.target.value as JobType }))}
                     className="w-full bg-transparent border rounded px-3 py-2 text-sm focus:outline-none focus:ring-1 theme-select"
                     style={{ borderColor: activeTheme.colors.border, ringColor: activeTheme.colors.accent }}
                   >
@@ -1192,25 +1328,25 @@ export default function App() {
                   </select>
                 </section>
 
-                {selectedJob.type === 'CHD' ? (
+                {draftSettings.type === 'CHD' ? (
                   <>
                     {/* CHD Hunk Size */}
                     <section>
                       <label className="block text-xs font-bold uppercase tracking-wider opacity-50 mb-2">
-                        Hunk Size: {selectedJob.settings.hunkSize} bytes
+                        Hunk Size: {draftSettings.settings.hunkSize} bytes
                       </label>
                       <input 
                         type="range"
                         min="0"
-                        max={(selectedJob.fileType === 'CD' ? CD_HUNK_SIZES : DVD_HUNK_SIZES).length - 1}
+                        max={(draftSettings.fileType === 'CD' ? CD_HUNK_SIZES : DVD_HUNK_SIZES).length - 1}
                         step="1"
-                        value={(selectedJob.fileType === 'CD' ? CD_HUNK_SIZES : DVD_HUNK_SIZES).indexOf(selectedJob.settings.hunkSize)}
-                        onChange={(e) => updateJobSettings(selectedJob.id, { hunkSize: (selectedJob.fileType === 'CD' ? CD_HUNK_SIZES : DVD_HUNK_SIZES)[parseInt(e.target.value)] })}
+                        value={(draftSettings.fileType === 'CD' ? CD_HUNK_SIZES : DVD_HUNK_SIZES).indexOf(draftSettings.settings.hunkSize)}
+                        onChange={(e) => setDraftSettings((prev: any) => ({ ...prev, settings: { ...prev.settings, hunkSize: (prev.fileType === 'CD' ? CD_HUNK_SIZES : DVD_HUNK_SIZES)[parseInt(e.target.value)] } }))}
                         className="w-full h-1.5 rounded-lg appearance-none cursor-pointer"
                         style={{ backgroundColor: activeTheme.colors.border }}
                       />
                       <div className="flex justify-between text-[10px] mt-1 opacity-50">
-                        {(selectedJob.fileType === 'CD' ? CD_HUNK_SIZES : DVD_HUNK_SIZES).map((s, i) => (
+                        {(draftSettings.fileType === 'CD' ? CD_HUNK_SIZES : DVD_HUNK_SIZES).map((s, i) => (
                           <span key={s}>{i % 2 === 0 ? s : '|'}</span>
                         ))}
                       </div>
@@ -1221,7 +1357,7 @@ export default function App() {
                       <label className="block text-xs font-bold uppercase tracking-wider opacity-50 mb-2">Compression Algorithms</label>
                       <div className="grid grid-cols-1 gap-2">
                         {CHD_ALGORITHMS.map(algo => {
-                          const isEnabled = algo.type === selectedJob.fileType;
+                          const isEnabled = algo.type === draftSettings.fileType;
                           return (
                             <label 
                               key={algo.id} 
@@ -1233,13 +1369,13 @@ export default function App() {
                               <input 
                                 type="checkbox"
                                 disabled={!isEnabled}
-                                checked={selectedJob.settings.chdAlgorithms.includes(algo.id)}
+                                checked={draftSettings.settings.chdAlgorithms.includes(algo.id)}
                                 onChange={(e) => {
-                                  const current = selectedJob.settings.chdAlgorithms;
+                                  const current = draftSettings.settings.chdAlgorithms;
                                   const next = e.target.checked 
                                     ? [...current, algo.id]
-                                    : current.filter(a => a !== algo.id);
-                                  if (next.length > 0) updateJobSettings(selectedJob.id, { chdAlgorithms: next });
+                                    : current.filter((a: string) => a !== algo.id);
+                                  if (next.length > 0) setDraftSettings((prev: any) => ({ ...prev, settings: { ...prev.settings, chdAlgorithms: next } }));
                                 }}
                                 className="rounded"
                               />
@@ -1253,15 +1389,15 @@ export default function App() {
                     {/* CHD Threads */}
                     <section>
                       <label className="block text-xs font-bold uppercase tracking-wider opacity-50 mb-2">
-                        Threads: {selectedJob.settings.threads}
+                        Threads: {draftSettings.settings.threads}
                       </label>
                       <input 
                         type="range"
                         min="1"
                         max={maxThreads}
                         step="1"
-                        value={selectedJob.settings.threads}
-                        onChange={(e) => updateJobSettings(selectedJob.id, { threads: parseInt(e.target.value) })}
+                        value={draftSettings.settings.threads}
+                        onChange={(e) => setDraftSettings((prev: any) => ({ ...prev, settings: { ...prev.settings, threads: parseInt(e.target.value) } }))}
                         className="w-full h-1.5 rounded-lg appearance-none cursor-pointer"
                         style={{ backgroundColor: activeTheme.colors.border }}
                       />
@@ -1274,14 +1410,14 @@ export default function App() {
                       </div>
                     </section>
                   </>
-                ) : selectedJob.type === 'Extract' ? (
+                ) : draftSettings.type === 'Extract' ? (
                   <>
                     {selectedJob.fileName.toLowerCase().endsWith('.chd') && (
                       <section>
                         <label className="block text-xs font-bold uppercase tracking-wider opacity-50 mb-2">Extract Format</label>
                         <select 
-                          value={selectedJob.settings.extractFormat || 'BIN/CUE'}
-                          onChange={(e) => updateJobSettings(selectedJob.id, { extractFormat: e.target.value as 'ISO' | 'BIN/CUE' | 'GDI' })}
+                          value={draftSettings.settings.extractFormat || 'BIN/CUE'}
+                          onChange={(e) => setDraftSettings((prev: any) => ({ ...prev, settings: { ...prev.settings, extractFormat: e.target.value as 'ISO' | 'BIN/CUE' | 'GDI' } }))}
                           className="w-full bg-transparent border rounded px-3 py-2 text-sm focus:outline-none focus:ring-1 theme-select"
                           style={{ borderColor: activeTheme.colors.border, ringColor: activeTheme.colors.accent }}
                         >
@@ -1293,15 +1429,15 @@ export default function App() {
                     )}
                     <section>
                       <label className="block text-xs font-bold uppercase tracking-wider opacity-50 mb-2">
-                        Threads: {selectedJob.settings.threads}
+                        Threads: {draftSettings.settings.threads}
                       </label>
                       <input 
                         type="range"
                         min="1"
                         max={maxThreads}
                         step="1"
-                        value={selectedJob.settings.threads}
-                        onChange={(e) => updateJobSettings(selectedJob.id, { threads: parseInt(e.target.value) })}
+                        value={draftSettings.settings.threads}
+                        onChange={(e) => setDraftSettings((prev: any) => ({ ...prev, settings: { ...prev.settings, threads: parseInt(e.target.value) } }))}
                         className="w-full h-1.5 rounded-lg appearance-none cursor-pointer"
                         style={{ backgroundColor: activeTheme.colors.border }}
                       />
@@ -1314,20 +1450,20 @@ export default function App() {
                       </div>
                     </section>
                   </>
-                ) : selectedJob.type === 'Info' || selectedJob.type === 'Verify' ? null : (
+                ) : draftSettings.type === 'Info' || draftSettings.type === 'Verify' ? null : (
                   <>
                     {/* CSO Compression Level */}
                     <section>
                       <label className="block text-xs font-bold uppercase tracking-wider opacity-50 mb-2">
-                        Compression Level: {selectedJob.settings.compressionLevel}
+                        Compression Level: {draftSettings.settings.compressionLevel}
                       </label>
                       <input 
                         type="range"
                         min="1"
                         max="9"
                         step="1"
-                        value={selectedJob.settings.compressionLevel}
-                        onChange={(e) => updateJobSettings(selectedJob.id, { compressionLevel: parseInt(e.target.value) })}
+                        value={draftSettings.settings.compressionLevel}
+                        onChange={(e) => setDraftSettings((prev: any) => ({ ...prev, settings: { ...prev.settings, compressionLevel: parseInt(e.target.value) } }))}
                         className="w-full h-1.5 rounded-lg appearance-none cursor-pointer"
                         style={{ backgroundColor: activeTheme.colors.border }}
                       />
@@ -1342,8 +1478,8 @@ export default function App() {
                       <div className="grid grid-cols-1 gap-2">
                         {MAXCSO_ALGORITHMS.map(algo => {
                           let isEnabled = true;
-                          if (selectedJob.type === 'CSO' && algo.type === 'lz4') isEnabled = false;
-                          if (selectedJob.type === 'ZSO' && algo.type === 'deflate') isEnabled = false;
+                          if (draftSettings.type === 'CSO' && algo.type === 'lz4') isEnabled = false;
+                          if (draftSettings.type === 'ZSO' && algo.type === 'deflate') isEnabled = false;
                           
                           return (
                             <label 
@@ -1356,13 +1492,13 @@ export default function App() {
                               <input 
                                 type="checkbox"
                                 disabled={!isEnabled}
-                                checked={selectedJob.settings.maxcsoAlgorithms.includes(algo.id)}
+                                checked={draftSettings.settings.maxcsoAlgorithms.includes(algo.id)}
                                 onChange={(e) => {
-                                  const current = selectedJob.settings.maxcsoAlgorithms;
+                                  const current = draftSettings.settings.maxcsoAlgorithms;
                                   const next = e.target.checked 
                                     ? [...current, algo.id]
-                                    : current.filter(a => a !== algo.id);
-                                  if (next.length > 0) updateJobSettings(selectedJob.id, { maxcsoAlgorithms: next });
+                                    : current.filter((a: string) => a !== algo.id);
+                                  if (next.length > 0) setDraftSettings((prev: any) => ({ ...prev, settings: { ...prev.settings, maxcsoAlgorithms: next } }));
                                 }}
                                 className="rounded"
                               />
@@ -1375,15 +1511,15 @@ export default function App() {
 
                     <section>
                       <label className="block text-xs font-bold uppercase tracking-wider opacity-50 mb-2">
-                        Threads: {selectedJob.settings.threads}
+                        Threads: {draftSettings.settings.threads}
                       </label>
                       <input 
                         type="range"
                         min="1"
                         max={maxThreads}
                         step="1"
-                        value={selectedJob.settings.threads}
-                        onChange={(e) => updateJobSettings(selectedJob.id, { threads: parseInt(e.target.value) })}
+                        value={draftSettings.settings.threads}
+                        onChange={(e) => setDraftSettings((prev: any) => ({ ...prev, settings: { ...prev.settings, threads: parseInt(e.target.value) } }))}
                         className="w-full h-1.5 rounded-lg appearance-none cursor-pointer"
                         style={{ backgroundColor: activeTheme.colors.border }}
                       />
@@ -1401,7 +1537,39 @@ export default function App() {
                 <div className="pt-4 border-t flex gap-2" style={{ borderColor: activeTheme.colors.border }}>
                   <button 
                     onClick={() => {
-                      addLog(`Applied settings to ${selectedJob.fileName}`, 'info');
+                      const settings = draftSettings.settings;
+                      const type = draftSettings.type;
+                      setJobs(prev => prev.map(j => {
+                        if (!selectedJobIds.includes(j.id)) return j;
+                        
+                        // Keep the target job's fileType unless we explicitly changed it for this job
+                        let adaptedSettings = { ...settings };
+                        let targetFileType = draftSettings.fileType;
+                        
+                        if (targetFileType === 'CD' && !CD_HUNK_SIZES.includes(adaptedSettings.hunkSize)) {
+                          adaptedSettings.hunkSize = 2448;
+                        } else if (targetFileType === 'DVD' && !DVD_HUNK_SIZES.includes(adaptedSettings.hunkSize)) {
+                          adaptedSettings.hunkSize = 4096;
+                        }
+                        
+                        const validAlgos = CHD_ALGORITHMS.filter(a => a.type === targetFileType).map(a => a.id);
+                        adaptedSettings.chdAlgorithms = adaptedSettings.chdAlgorithms.filter((a: string) => validAlgos.includes(a));
+                        if (adaptedSettings.chdAlgorithms.length === 0) {
+                          adaptedSettings.chdAlgorithms = targetFileType === 'CD' ? ['cdzl', 'cdlz', 'cdfl'] : ['zlib', 'lzma', 'huff', 'flac'];
+                        }
+
+                        return { 
+                          ...j, 
+                          type,
+                          fileType: targetFileType,
+                          settings: adaptedSettings,
+                          status: 'Pending',
+                          progress: 0,
+                          downloadUrl: undefined,
+                          error: undefined
+                        };
+                      }));
+                      addLog(`Applied settings to ${selectedJobIds.length} selected job(s)`, 'info');
                     }}
                     className="flex-1 py-2 rounded text-sm font-medium border theme-hover"
                     style={{ borderColor: activeTheme.colors.border }}
@@ -1410,23 +1578,20 @@ export default function App() {
                   </button>
                   <button 
                     onClick={() => {
-                      const settings = selectedJob.settings;
-                      const type = selectedJob.type;
+                      const settings = draftSettings.settings;
+                      const type = draftSettings.type;
                       setJobs(prev => prev.map(j => {
-                        // Keep the target job's fileType
                         let adaptedSettings = { ...settings };
                         let targetFileType = j.fileType;
                         
-                        // If the source job was a different fileType, we need to adapt the settings for this target
                         if (targetFileType === 'CD' && !CD_HUNK_SIZES.includes(adaptedSettings.hunkSize)) {
                           adaptedSettings.hunkSize = 2448;
                         } else if (targetFileType === 'DVD' && !DVD_HUNK_SIZES.includes(adaptedSettings.hunkSize)) {
                           adaptedSettings.hunkSize = 4096;
                         }
                         
-                        // Ensure algorithms match the target fileType
                         const validAlgos = CHD_ALGORITHMS.filter(a => a.type === targetFileType).map(a => a.id);
-                        adaptedSettings.chdAlgorithms = adaptedSettings.chdAlgorithms.filter(a => validAlgos.includes(a));
+                        adaptedSettings.chdAlgorithms = adaptedSettings.chdAlgorithms.filter((a: string) => validAlgos.includes(a));
                         if (adaptedSettings.chdAlgorithms.length === 0) {
                           adaptedSettings.chdAlgorithms = targetFileType === 'CD' ? ['cdzl', 'cdlz', 'cdfl'] : ['zlib', 'lzma', 'huff', 'flac'];
                         }
