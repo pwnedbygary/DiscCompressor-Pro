@@ -4,7 +4,7 @@ export const DEFAULT_SETTINGS: CompressionSettings = {
   hunkSize: 4096,
   chdAlgorithms: ['zlib'],
   compressionLevel: 9,
-  threads: 4,
+  threads: typeof navigator !== 'undefined' ? navigator.hardwareConcurrency || 8 : 8,
   maxcsoAlgorithms: ['fast'],
 };
 

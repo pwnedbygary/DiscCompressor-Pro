@@ -136,6 +136,10 @@ const getFilePath = (file: File, nativeFiles?: File[]): string => {
 export default function App() {
   // State
   const [jobs, setJobs] = useState<Job[]>([]);
+  const jobsRef = useRef(jobs);
+  useEffect(() => {
+    jobsRef.current = jobs;
+  }, [jobs]);
   const [activeTheme, setActiveTheme] = useState<Theme>(THEMES[0]);
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [logSearchQuery, setLogSearchQuery] = useState('');
@@ -526,22 +530,16 @@ export default function App() {
   };
 
   const startProcessing = async () => {
-    if (isProcessing || jobs.length === 0) return;
+    if (isProcessing || jobsRef.current.length === 0) return;
     setIsProcessing(true);
     isProcessingRef.current = true;
     addLog('Starting queue processing...', 'info');
 
-    const pendingJobs = jobs.filter(j => j.status === 'Pending');
-    
-    if (pendingJobs.length === 0) {
-      setIsProcessing(false);
-      return;
-    }
-
-    // 1. Process each job sequentially
-    for (const job of pendingJobs) {
-      if (!isProcessingRef.current) {
-        break; // Stop if user clicked Stop
+    // 1. Process each job sequentially, fetching the next pending job dynamically
+    while (isProcessingRef.current) {
+      const job = jobsRef.current.find(j => j.status === 'Pending');
+      if (!job) {
+        break; // No more pending jobs
       }
       
       const ipcRenderer = getIpcRenderer();
@@ -1400,7 +1398,16 @@ export default function App() {
                   </>
                 )}
 
-                <div className="pt-4 border-t" style={{ borderColor: activeTheme.colors.border }}>
+                <div className="pt-4 border-t flex gap-2" style={{ borderColor: activeTheme.colors.border }}>
+                  <button 
+                    onClick={() => {
+                      addLog(`Applied settings to ${selectedJob.fileName}`, 'info');
+                    }}
+                    className="flex-1 py-2 rounded text-sm font-medium border theme-hover"
+                    style={{ borderColor: activeTheme.colors.border }}
+                  >
+                    Apply to Selected
+                  </button>
                   <button 
                     onClick={() => {
                       const settings = selectedJob.settings;
@@ -1436,7 +1443,7 @@ export default function App() {
                       }));
                       addLog('Applied format and settings to all jobs and requeued', 'info');
                     }}
-                    className="w-full py-2 rounded text-sm font-medium border theme-hover"
+                    className="flex-1 py-2 rounded text-sm font-medium border theme-hover"
                     style={{ borderColor: activeTheme.colors.border }}
                   >
                     Apply to All
