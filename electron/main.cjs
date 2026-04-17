@@ -534,20 +534,25 @@ ipcMain.handle('process-file', async (event, { jobId, fileName, type, settings, 
           const outExt = path.extname(outputPath);
           const outBase = path.basename(outputPath, outExt);
           const outDir = path.dirname(outputPath);
-          const match = outBase.match(/^(.*?)\s*[\[\(]Dis[ck]\s*\d+[\]\)]$/i);
-          if (match) {
-            const gameName = match[1];
-            const m3uPath = path.join(outDir, `${gameName}.m3u`);
+          
+          const discRegex = /\s*[\(\[]Dis[ck]\s*\d+[\)\]]/i;
+          if (discRegex.test(outBase)) {
+            const m3uBaseName = outBase.replace(discRegex, '').trim();
+            const m3uPath = path.join(outDir, `${m3uBaseName}.m3u`);
+            
             const files = fs.readdirSync(outDir);
             const discFiles = files.filter(f => {
               const fExt = path.extname(f);
               const fBase = path.basename(f, fExt);
-              const fMatch = fBase.match(/^(.*?)\s*[\[\(]Dis[ck]\s*\d+[\]\)]$/i);
-              return fExt === outExt && fMatch && fMatch[1] === gameName;
+              return fExt === outExt && fBase.replace(discRegex, '').trim() === m3uBaseName && discRegex.test(fBase);
             });
-            discFiles.sort();
-            fs.writeFileSync(m3uPath, discFiles.join('\n'));
-            sendEvent('log', { level: 'success', message: `Generated playlist: ${gameName}.m3u` });
+            
+            if (discFiles.length > 0) {
+              // Ensure proper alphanumeric sorting so Disc 1, Disc 2, etc, are in proper order
+              discFiles.sort((a, b) => a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' }));
+              fs.writeFileSync(m3uPath, discFiles.join('\n'));
+              sendEvent('log', { level: 'success', message: `Generated playlist: ${m3uBaseName}.m3u` });
+            }
           }
         } catch (e) {
           console.error('Failed to generate M3U', e);
