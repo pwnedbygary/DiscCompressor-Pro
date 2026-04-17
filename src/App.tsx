@@ -167,7 +167,9 @@ export default function App() {
     themeId: 'adwaita',
     deleteOriginals: false,
     autoGenerateM3U: false,
-    minimizeToTray: false
+    minimizeToTray: false,
+    chdmanPath: '',
+    maxcsoPath: ''
   });
 
   const logEndRef = useRef<HTMLDivElement>(null);
@@ -1752,13 +1754,14 @@ export default function App() {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50 backdrop-blur-sm"
+            className="fixed inset-0 z-50 flex items-center justify-center p-4 backdrop-blur-md"
+            style={{ backgroundColor: `${activeTheme.colors.bg}80` }}
           >
             <motion.div 
               initial={{ scale: 0.95, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
               exit={{ scale: 0.95, opacity: 0 }}
-              className="w-full max-w-md p-6 rounded-xl border shadow-2xl"
+              className="w-full max-w-lg p-6 rounded-xl border shadow-2xl max-h-[90vh] overflow-y-auto"
               style={{ 
                 backgroundColor: activeTheme.colors.bg, 
                 borderColor: activeTheme.colors.border,
@@ -1778,7 +1781,7 @@ export default function App() {
                 </button>
               </div>
 
-              <div className="space-y-4">
+              <div className="space-y-6">
                 <div>
                   <label className="block text-sm font-medium mb-1">Output Directory</label>
                   <div className="flex gap-2">
@@ -1810,6 +1813,66 @@ export default function App() {
                     </button>
                   </div>
                   <p className="text-xs opacity-50 mt-1">Absolute path where compressed files will be saved.</p>
+                </div>
+
+                <div className="space-y-4">
+                  <div>
+                    <label className="block text-sm font-medium mb-1">Custom chdman Path</label>
+                    <div className="flex gap-2">
+                      <input 
+                        type="text" 
+                        value={appSettings.chdmanPath || ''}
+                        onChange={(e) => setAppSettings(prev => ({ ...prev, chdmanPath: e.target.value }))}
+                        className="flex-1 bg-transparent border rounded px-3 py-2 text-sm"
+                        style={{ borderColor: activeTheme.colors.border }}
+                        placeholder="Default (system PATH)"
+                      />
+                      <button
+                        onClick={async () => {
+                          const ipcRenderer = getIpcRenderer();
+                          if (ipcRenderer) {
+                            const selectedPath = await ipcRenderer.invoke('dialog:openFile');
+                            if (selectedPath) {
+                              setAppSettings(prev => ({ ...prev, chdmanPath: selectedPath }));
+                            }
+                          }
+                        }}
+                        className="px-4 py-2 rounded text-sm font-medium border theme-hover"
+                        style={{ borderColor: activeTheme.colors.border }}
+                      >
+                        Browse
+                      </button>
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium mb-1">Custom maxcso Path</label>
+                    <div className="flex gap-2">
+                      <input 
+                        type="text" 
+                        value={appSettings.maxcsoPath || ''}
+                        onChange={(e) => setAppSettings(prev => ({ ...prev, maxcsoPath: e.target.value }))}
+                        className="flex-1 bg-transparent border rounded px-3 py-2 text-sm"
+                        style={{ borderColor: activeTheme.colors.border }}
+                        placeholder="Default (system PATH)"
+                      />
+                      <button
+                        onClick={async () => {
+                          const ipcRenderer = getIpcRenderer();
+                          if (ipcRenderer) {
+                            const selectedPath = await ipcRenderer.invoke('dialog:openFile');
+                            if (selectedPath) {
+                              setAppSettings(prev => ({ ...prev, maxcsoPath: selectedPath }));
+                            }
+                          }
+                        }}
+                        className="px-4 py-2 rounded text-sm font-medium border theme-hover"
+                        style={{ borderColor: activeTheme.colors.border }}
+                      >
+                        Browse
+                      </button>
+                    </div>
+                  </div>
                 </div>
 
                 <div>

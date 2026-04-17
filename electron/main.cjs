@@ -159,6 +159,18 @@ ipcMain.handle('dialog:openDirectory', async () => {
   }
 });
 
+// IPC handler for file selection
+ipcMain.handle('dialog:openFile', async () => {
+  const { canceled, filePaths } = await dialog.showOpenDialog({
+    properties: ['openFile']
+  });
+  if (canceled) {
+    return null;
+  } else {
+    return filePaths[0];
+  }
+});
+
 // IPC handler to quit app
 ipcMain.on('quit-app', () => {
   app.quit();
@@ -174,7 +186,9 @@ let appSettings = {
   themeId: 'adwaita',
   deleteOriginals: false,
   autoGenerateM3U: false,
-  minimizeToTray: false
+  minimizeToTray: false,
+  chdmanPath: '',
+  maxcsoPath: ''
 };
 
 if (fs.existsSync(settingsPath)) {
@@ -312,7 +326,8 @@ ipcMain.handle('process-file', async (event, { jobId, fileName, type, settings, 
         sendEvent('log', { level: 'info', message: `Decompressing CHD to temporary ISO...` });
         const tempIsoPath = path.join(outputDir, `${baseName}_temp.iso`);
         await new Promise((resolve, reject) => {
-          const p = spawn('chdman', ['extractdvd', '-i', inputPath, '-o', tempIsoPath, '-f']);
+          const chdmanExe = appSettings.chdmanPath || 'chdman';
+          const p = spawn(chdmanExe, ['extractdvd', '-i', inputPath, '-o', tempIsoPath, '-f']);
           p.on('close', code => {
             if (code === 0) resolve();
             else reject(new Error(`Failed to decompress CHD`));
@@ -324,7 +339,8 @@ ipcMain.handle('process-file', async (event, { jobId, fileName, type, settings, 
         sendEvent('log', { level: 'info', message: `Decompressing ${extLower} to temporary ISO...` });
         const tempIsoPath = path.join(outputDir, `${baseName}_temp.iso`);
         await new Promise((resolve, reject) => {
-          const p = spawn('maxcso', ['--decompress', inputPath, '-o', tempIsoPath]);
+          const maxcsoExe = appSettings.maxcsoPath || 'maxcso';
+          const p = spawn(maxcsoExe, ['--decompress', inputPath, '-o', tempIsoPath]);
           p.on('close', code => {
             if (code === 0) resolve();
             else reject(new Error(`Failed to decompress ${extLower}`));
@@ -340,7 +356,7 @@ ipcMain.handle('process-file', async (event, { jobId, fileName, type, settings, 
   }
   
   if (type === 'CHD') {
-    cmd = 'chdman';
+    cmd = appSettings.chdmanPath || 'chdman';
     const createCmd = path.extname(actualInputPath).toLowerCase() === '.iso' ? 'createdvd' : 'createcd';
     args = [createCmd, '-i', actualInputPath, '-o', outputPath, '-f'];
     if (settings.hunkSize) {
@@ -354,7 +370,7 @@ ipcMain.handle('process-file', async (event, { jobId, fileName, type, settings, 
     }
   } else if (type === 'Extract') {
     if (extLower === '.chd') {
-      cmd = 'chdman';
+      cmd = appSettings.chdmanPath || 'chdman';
       let extractCmd = 'extractdvd';
       let finalOutputExt = '.iso';
       if (settings.extractFormat === 'BIN/CUE') {
@@ -366,7 +382,8 @@ ipcMain.handle('process-file', async (event, { jobId, fileName, type, settings, 
       }
 
       try {
-        const { stdout } = await execPromise(`chdman info -i "${actualInputPath}"`);
+        const chdmanExe = appSettings.chdmanPath || 'chdman';
+        const { stdout } = await execPromise(`"${chdmanExe}" info -i "${actualInputPath}"`);
         if (stdout.includes("Tag='DVD '")) {
           if (settings.extractFormat === 'GDI' || settings.extractFormat === 'BIN/CUE') {
             sendEvent('log', { level: 'warn', message: `Warning: ${settings.extractFormat} is not valid for DVD CHDs. Extracting to ISO instead.` });
@@ -396,19 +413,19 @@ ipcMain.handle('process-file', async (event, { jobId, fileName, type, settings, 
       outputPath = path.join(outputDir, `${baseName}${finalOutputExt}`);
       args = [extractCmd, '-i', actualInputPath, '-o', outputPath, '-f'];
     } else {
-      cmd = 'maxcso';
+      cmd = appSettings.maxcsoPath || 'maxcso';
       args = ['--decompress', actualInputPath, '-o', outputPath];
       if (settings.threads) args.push('--threads=' + settings.threads);
     }
   } else if (type === 'Info') {
-    cmd = 'chdman';
+    cmd = appSettings.chdmanPath || 'chdman';
     args = ['info', '-i', actualInputPath];
   } else if (type === 'Verify') {
-    cmd = 'chdman';
+    cmd = appSettings.chdmanPath || 'chdman';
     args = ['verify', '-i', actualInputPath];
   } else {
     // Assume maxcso for CSO/ZSO
-    cmd = 'maxcso';
+    cmd = appSettings.maxcsoPath || 'maxcso';
     args = [`--block=2048`];
     if (type === 'CSOv2') args.push('--format=cso2');
     if (type === 'ZSO') args.push('--format=zso');
