@@ -2,8 +2,8 @@
 
 ## DiscCompressor Pro ##
 
-**This app started, for me, as a small project to create a simple, good looking and intuitive application that allows for CUE/BIN/ISO conversion to and from CHD and CSO, CSOv2, and ZSO. 
-The app itself is currently only buildable for Linux hosts as this is the primary platform I use. Feel free to request any new features or report bug fixes that need addressing.**
+**This app started, for me, as a small project to create a simple, good-looking, intuitive application that allows for CUE/BIN/ISO conversion to and from CHD and CSO, CSOv2, and ZSO on Linux. 
+The app itself is currently only buildable for Linux hosts in AppImage format, as this is the primary platform I use. Feel free to request any new features or report bug fixes that need addressing.**
 
 ## To build this app and run locally ##
 
