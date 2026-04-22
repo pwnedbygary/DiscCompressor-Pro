@@ -10,7 +10,7 @@
     "dev": "vite",
     "dev:electron": "concurrently \"vite\" \"wait-on http://localhost:3000 && electron .\"",
     "build": "vite build",
-    "build:app": "npm run build && npx shx mkdir -p build && npx shx cp icon.png build/icon.png && electron-builder",
+    "build:app": "npm run build && electron-builder",
     "preview": "vite preview",
     "clean": "rm -rf dist release",
     "lint": "tsc --noEmit"
@@ -19,8 +19,7 @@
     "appId": "com.disccompressor.pro",
     "productName": "DiscCompressor Pro",
     "directories": {
-      "output": "release",
-      "buildResources": "build"
+      "output": "release"
     },
     "files": [
       "dist/**/*",
@@ -35,15 +34,15 @@
     ],
     "mac": {
       "target": "dmg",
-      "icon": "build/icon.png"
+      "icon": "icon.png"
     },
     "win": {
       "target": "nsis",
-      "icon": "build/icon.png"
+      "icon": "icon.png"
     },
     "linux": {
       "target": "AppImage",
-      "icon": "build/icon.png",
+      "icon": "icon.png",
       "category": "Utility"
     }
   },
