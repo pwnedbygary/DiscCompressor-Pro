@@ -269,7 +269,7 @@ ipcMain.handle('cancel-job', (event, jobId) => {
   return false;
 });
 
-ipcMain.handle('process-file', async (event, { jobId, fileName, type, settings, inputPath }) => {
+ipcMain.handle('process-file', async (event, { jobId, fileName, type, fileType, settings, inputPath }) => {
   if (!inputPath) {
     throw new Error('inputPath is required');
   }
@@ -357,9 +357,9 @@ ipcMain.handle('process-file', async (event, { jobId, fileName, type, settings, 
   
   if (type === 'CHD') {
     cmd = appSettings.chdmanPath || 'chdman';
-    const createCmd = path.extname(actualInputPath).toLowerCase() === '.iso' ? 'createdvd' : 'createcd';
+    const createCmd = fileType === 'DVD' ? 'createdvd' : 'createcd';
     args = [createCmd, '-i', actualInputPath, '-o', outputPath, '-f'];
-    if (settings.hunkSize) {
+    if (settings.hunkSize && settings.hunkSize !== 0) {
       args.push('-hs', settings.hunkSize.toString());
     }
     if (settings.chdAlgorithms && settings.chdAlgorithms.length > 0) {

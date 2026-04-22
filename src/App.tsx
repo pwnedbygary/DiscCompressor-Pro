@@ -440,7 +440,7 @@ export default function App() {
         settings: { 
           ...DEFAULT_SETTINGS,
           chdAlgorithms,
-          hunkSize: name.endsWith('.gdi') ? 2048 : (fileType === 'CD' ? 2448 : 4096), // Standard hunk sizes
+          hunkSize: fileType === 'CD' ? 0 : 0, // Auto by default
           extractFormat: name.endsWith('.chd') ? 'BIN/CUE' : 'ISO'
         },
         addedAt: Date.now(),
@@ -672,6 +672,7 @@ export default function App() {
           jobId: job.id,
           fileName: job.fileName,
           type: job.type,
+          fileType: job.fileType,
           settings: job.settings,
           inputPath: job.inputPath
         }).catch((err: any) => {
@@ -1292,8 +1293,8 @@ export default function App() {
                       onChange={(e) => {
                         const newFileType = e.target.value as 'CD' | 'DVD';
                         let newHunkSize = draftSettings.settings.hunkSize;
-                        if (newFileType === 'CD' && !CD_HUNK_SIZES.includes(newHunkSize)) newHunkSize = 2448;
-                        if (newFileType === 'DVD' && !DVD_HUNK_SIZES.includes(newHunkSize)) newHunkSize = 4096;
+                        if (newFileType === 'CD' && !CD_HUNK_SIZES.includes(newHunkSize)) newHunkSize = 0;
+                        if (newFileType === 'DVD' && !DVD_HUNK_SIZES.includes(newHunkSize)) newHunkSize = 0;
                         const newAlgorithms = newFileType === 'CD' ? ['cdzl', 'cdlz', 'cdfl'] : ['zlib', 'lzma', 'huff', 'flac'];
                         
                         setDraftSettings((prev: any) => ({
@@ -1335,7 +1336,7 @@ export default function App() {
                     {/* CHD Hunk Size */}
                     <section>
                       <label className="block text-xs font-bold uppercase tracking-wider opacity-50 mb-2">
-                        Hunk Size: {draftSettings.settings.hunkSize} bytes
+                        Hunk Size: {draftSettings.settings.hunkSize === 0 ? 'Auto' : `${draftSettings.settings.hunkSize} bytes`}
                       </label>
                       <input 
                         type="range"
@@ -1349,7 +1350,7 @@ export default function App() {
                       />
                       <div className="flex justify-between text-[10px] mt-1 opacity-50">
                         {(draftSettings.fileType === 'CD' ? CD_HUNK_SIZES : DVD_HUNK_SIZES).map((s, i) => (
-                          <span key={s}>{i % 2 === 0 ? s : '|'}</span>
+                          <span key={s}>{i % 2 === 0 ? (s === 0 ? 'Auto' : s) : '|'}</span>
                         ))}
                       </div>
                     </section>
@@ -1549,9 +1550,9 @@ export default function App() {
                         let targetFileType = draftSettings.fileType;
                         
                         if (targetFileType === 'CD' && !CD_HUNK_SIZES.includes(adaptedSettings.hunkSize)) {
-                          adaptedSettings.hunkSize = 2448;
+                          adaptedSettings.hunkSize = 0;
                         } else if (targetFileType === 'DVD' && !DVD_HUNK_SIZES.includes(adaptedSettings.hunkSize)) {
-                          adaptedSettings.hunkSize = 4096;
+                          adaptedSettings.hunkSize = 0;
                         }
                         
                         const validAlgos = CHD_ALGORITHMS.filter(a => a.type === targetFileType).map(a => a.id);
@@ -1587,9 +1588,9 @@ export default function App() {
                         let targetFileType = j.fileType;
                         
                         if (targetFileType === 'CD' && !CD_HUNK_SIZES.includes(adaptedSettings.hunkSize)) {
-                          adaptedSettings.hunkSize = 2448;
+                          adaptedSettings.hunkSize = 0;
                         } else if (targetFileType === 'DVD' && !DVD_HUNK_SIZES.includes(adaptedSettings.hunkSize)) {
-                          adaptedSettings.hunkSize = 4096;
+                          adaptedSettings.hunkSize = 0;
                         }
                         
                         const validAlgos = CHD_ALGORITHMS.filter(a => a.type === targetFileType).map(a => a.id);
