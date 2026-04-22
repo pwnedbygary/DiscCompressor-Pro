@@ -10,7 +10,7 @@
     "dev": "vite",
     "dev:electron": "concurrently \"vite\" \"wait-on http://localhost:3000 && electron .\"",
     "build": "vite build",
-    "build:app": "npm run build && npx shx rm -f icon.png && electron-builder",
+    "build:app": "npm run build && electron-builder",
     "preview": "vite preview",
     "clean": "rm -rf dist release",
     "lint": "tsc --noEmit"
@@ -42,7 +42,8 @@
     },
     "linux": {
       "target": "AppImage",
-      "icon": "build/icon.png"
+      "icon": "build/icon.png",
+      "category": "Utility"
     }
   },
   "dependencies": {
