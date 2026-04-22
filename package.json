@@ -25,24 +25,24 @@
       "dist/**/*",
       "electron/main.cjs",
       "package.json",
-      "build/icon.png",
       "assets/tray-icon.png",
       "assets/tray-icon-64.png",
       "assets/tray-icon.jpg",
       "assets/tray-icon-64.jpg",
+      "icon.png",
       "icon.svg"
     ],
     "mac": {
       "target": "dmg",
-      "icon": "build/icon.png"
+      "icon": "icon.png"
     },
     "win": {
       "target": "nsis",
-      "icon": "build/icon.png"
+      "icon": "icon.png"
     },
     "linux": {
       "target": "AppImage",
-      "icon": "build/icon.png",
+      "icon": "icon.png",
       "category": "Utility"
     }
   },
