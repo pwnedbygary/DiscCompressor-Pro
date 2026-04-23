@@ -434,6 +434,12 @@ ipcMain.handle('process-file', async (event, { jobId, fileName, type, fileType, 
     if (settings.threads) args.push('--threads=' + settings.threads);
     if (settings.maxcsoAlgorithms && settings.maxcsoAlgorithms.length > 0) {
       settings.maxcsoAlgorithms.forEach(algo => {
+        if (type === 'ZSO') {
+          if (algo === 'use-zlib' || algo === 'use-zopfli' || algo === 'use-7zdeflate' || algo === 'use-libdeflate') return;
+        } else if (type === 'CSO') {
+          if (algo === 'use-lz4' || algo === 'use-lz4brute') return;
+        }
+        
         if (algo !== 'fast') {
           args.push(`--${algo}`);
         } else {

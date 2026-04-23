@@ -1317,7 +1317,25 @@ export default function App() {
                   <label className="block text-xs font-bold uppercase tracking-wider opacity-50 mb-2">Output Format</label>
                   <select 
                     value={draftSettings.type}
-                    onChange={(e) => setDraftSettings((prev: any) => ({ ...prev, type: e.target.value as JobType }))}
+                    onChange={(e) => {
+                      const newType = e.target.value as JobType;
+                      setDraftSettings((prev: any) => {
+                        let newDraft = { ...prev, type: newType };
+                        if (newType === 'CSO' || newType === 'ZSO' || newType === 'CSOv2') {
+                          const validMaxcsoAlgos = MAXCSO_ALGORITHMS.filter(a => {
+                            if (newType === 'CSO' && a.type === 'lz4') return false;
+                            if (newType === 'ZSO' && a.type === 'deflate') return false;
+                            return true;
+                          }).map(a => a.id);
+                          let filtered = prev.settings.maxcsoAlgorithms.filter((a: string) => validMaxcsoAlgos.includes(a));
+                          if (filtered.length === 0) {
+                            filtered = newType === 'ZSO' ? ['use-lz4', 'use-lz4brute'] : ['use-zlib', 'use-7zdeflate', 'use-libdeflate'];
+                          }
+                          newDraft.settings = { ...prev.settings, maxcsoAlgorithms: filtered };
+                        }
+                        return newDraft;
+                      });
+                    }}
                     className="w-full bg-transparent border rounded px-3 py-2 text-sm focus:outline-none focus:ring-1 theme-select"
                     style={{ borderColor: activeTheme.colors.border, ringColor: activeTheme.colors.accent }}
                   >
@@ -1561,6 +1579,18 @@ export default function App() {
                           adaptedSettings.chdAlgorithms = targetFileType === 'CD' ? ['cdzl', 'cdlz', 'cdfl'] : ['zlib', 'lzma', 'huff', 'flac'];
                         }
 
+                        if (adaptedSettings.maxcsoAlgorithms) {
+                          const validMaxcsoAlgos = MAXCSO_ALGORITHMS.filter(a => {
+                            if (type === 'CSO' && a.type === 'lz4') return false;
+                            if (type === 'ZSO' && a.type === 'deflate') return false;
+                            return true;
+                          }).map(a => a.id);
+                          adaptedSettings.maxcsoAlgorithms = adaptedSettings.maxcsoAlgorithms.filter((a: string) => validMaxcsoAlgos.includes(a));
+                          if (adaptedSettings.maxcsoAlgorithms.length === 0) {
+                            adaptedSettings.maxcsoAlgorithms = type === 'ZSO' ? ['use-lz4', 'use-lz4brute'] : ['use-zlib', 'use-7zdeflate', 'use-libdeflate'];
+                          }
+                        }
+
                         return { 
                           ...j, 
                           type,
@@ -1597,6 +1627,18 @@ export default function App() {
                         adaptedSettings.chdAlgorithms = adaptedSettings.chdAlgorithms.filter((a: string) => validAlgos.includes(a));
                         if (adaptedSettings.chdAlgorithms.length === 0) {
                           adaptedSettings.chdAlgorithms = targetFileType === 'CD' ? ['cdzl', 'cdlz', 'cdfl'] : ['zlib', 'lzma', 'huff', 'flac'];
+                        }
+
+                        if (adaptedSettings.maxcsoAlgorithms) {
+                          const validMaxcsoAlgos = MAXCSO_ALGORITHMS.filter(a => {
+                            if (type === 'CSO' && a.type === 'lz4') return false;
+                            if (type === 'ZSO' && a.type === 'deflate') return false;
+                            return true;
+                          }).map(a => a.id);
+                          adaptedSettings.maxcsoAlgorithms = adaptedSettings.maxcsoAlgorithms.filter((a: string) => validMaxcsoAlgos.includes(a));
+                          if (adaptedSettings.maxcsoAlgorithms.length === 0) {
+                            adaptedSettings.maxcsoAlgorithms = type === 'ZSO' ? ['use-lz4', 'use-lz4brute'] : ['use-zlib', 'use-7zdeflate', 'use-libdeflate'];
+                          }
                         }
 
                         return { 
