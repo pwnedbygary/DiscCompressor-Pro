@@ -401,7 +401,7 @@ ipcMain.handle('process-file', async (event, { jobId, fileName, type, fileType, 
             throw new Error("Cannot extract standard CD CHD to GDI format. Please select BIN/CUE extraction format.");
           }
           extractCmd = 'extractcd';
-          finalOutputExt = '.cue';
+          finalOutputExt = settings.extractFormat === 'ISO' ? '.iso' : '.cue';
         }
       } catch (e) {
         if (e.message.includes('Cannot extract')) {
