@@ -1615,7 +1615,7 @@ export default function App() {
                       const type = draftSettings.type;
                       setJobs(prev => prev.map(j => {
                         let adaptedSettings = { ...settings };
-                        let targetFileType = j.fileType;
+                        let targetFileType = draftSettings.fileType;
                         
                         if (targetFileType === 'CD' && !CD_HUNK_SIZES.includes(adaptedSettings.hunkSize)) {
                           adaptedSettings.hunkSize = 0;
@@ -1644,6 +1644,7 @@ export default function App() {
                         return { 
                           ...j, 
                           type,
+                          fileType: targetFileType,
                           settings: adaptedSettings,
                           status: 'Pending',
                           progress: 0,
