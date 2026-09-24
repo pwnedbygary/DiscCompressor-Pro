@@ -12,7 +12,7 @@ import {
 } from 'electron'
 import { IPC } from '@shared/api'
 import type { AppCommand } from '@shared/types'
-import { type JobEventBatcher, registerIpc } from './ipc'
+import { type IpcBridge, registerIpc } from './ipc'
 import { JobRunner } from './jobs/runner'
 import { WorkDirJournal } from './jobs/workDirs'
 import { registerAppScheme, serveRenderer } from './protocol'
@@ -61,7 +61,7 @@ async function main(): Promise<void> {
 
   let window: BrowserWindow | null = null
   let tray: Tray | null = null
-  let batcher: JobEventBatcher | null = null
+  let ipc: IpcBridge | null = null
   let rendererReady = false
   let pendingPaths: string[] = pathsFromArgv(process.argv, process.cwd())
   let quitting = false
@@ -83,8 +83,9 @@ async function main(): Promise<void> {
   const runner = new JobRunner({
     settings: () => settings.get(),
     tools: (refresh) => tools.get(settings.get(), refresh),
-    emit: (event) => batcher?.push(event),
+    emit: (event) => ipc?.events.push(event),
     trash: (path) => shell.trashItem(path),
+    filesInUse: (query) => ipc?.filesInUse(query) ?? Promise.resolve(null),
     workDirs,
     onActiveChange: () => updateSleepBlocker()
   })
@@ -173,11 +174,12 @@ async function main(): Promise<void> {
   const rendererDir = join(import.meta.dirname, '../renderer')
   if (existsSync(rendererDir)) serveRenderer(rendererDir)
 
-  batcher = registerIpc({
+  ipc = registerIpc({
     window: () => window,
     settings,
     tools,
     runner,
+    isRendererReady: () => rendererReady,
     onRendererReady: () => {
       rendererReady = true
       deliverPaths()

@@ -6,7 +6,7 @@ import { DEFAULT_JOB_SETTINGS } from '@shared/formats'
 import type { AppSettings, JobEvent, RunJobRequest, ToolsStatus } from '@shared/types'
 import { defaultSettings } from '../settings'
 import { syntheticChd, syntheticCso, writeFakeTools } from '../testing/fixtures'
-import { JobRunner } from './runner'
+import { JobRunner, type RunnerDependencies } from './runner'
 
 // The fake tools are shebang scripts, which Windows cannot execute directly.
 const describeUnix = process.platform === 'win32' ? describe.skip : describe
@@ -47,7 +47,12 @@ interface Harness {
   run(request: Request): Promise<JobEvent>
 }
 
-function harness(overrides: Partial<AppSettings> = {}, onEvent?: (event: JobEvent, runner: JobRunner) => void): Harness {
+function harness(
+  overrides: Partial<AppSettings> = {},
+  onEvent?: (event: JobEvent, runner: JobRunner) => void,
+  filesInUse?: RunnerDependencies['filesInUse'],
+  extra: Partial<RunnerDependencies> = {}
+): Harness {
   const events: JobEvent[] = []
   const trashed: string[] = []
   const waiters = new Map<string, (event: JobEvent) => void>()
@@ -60,10 +65,12 @@ function harness(overrides: Partial<AppSettings> = {}, onEvent?: (event: JobEven
       onEvent?.(event, runner)
       if (event.type === 'done' || event.type === 'failed' || event.type === 'cancelled') waiters.get(event.jobId)?.(event)
     },
-    trash: (path) => {
+    trash: async (path) => {
       trashed.push(path)
-      return Promise.resolve()
-    }
+      await rm(path)
+    },
+    filesInUse,
+    ...extra
   })
   return {
     events,
@@ -79,6 +86,11 @@ function harness(overrides: Partial<AppSettings> = {}, onEvent?: (event: JobEven
 }
 
 const logs = (h: Harness): string[] => h.events.flatMap((e) => (e.type === 'log' ? [e.message] : []))
+
+async function waitFor(check: () => boolean): Promise<void> {
+  for (let i = 0; i < 200 && !check(); i += 1) await new Promise((resolve) => setTimeout(resolve, 25))
+  expect(check()).toBe(true)
+}
 
 async function workDirsLeft(dir: string): Promise<string[]> {
   try {
@@ -288,7 +300,7 @@ describeUnix('JobRunner', () => {
     expect(logs(verify)).toContain('Raw SHA1 verification successful!')
   })
 
-  it('keeps originals that other jobs still need', async () => {
+  it('keeps originals that another running job still reads', async () => {
     const iso = join(inputDir, 'waitcso.iso')
     await writeFile(iso, Buffer.alloc(2048 * 4))
     const h = harness({ deleteOriginals: true })
@@ -299,12 +311,88 @@ describeUnix('JobRunner', () => {
     expect(logs(h)).toContain('Kept waitcso.iso because another job is still using it')
     h.runner.cancel('zso')
     expect(await zso).toMatchObject({ type: 'cancelled' })
+  })
 
-    // Jobs that are only queued are known to the renderer, which asks for the originals to be kept.
-    const queued = await h.run({ id: 'queued', inputPath: iso, target: 'CHD', keepOriginals: true })
-    expect(queued).toMatchObject({ type: 'done' })
+  it('asks, when a job finishes, which originals queued jobs still need', async () => {
+    const iso = join(inputDir, 'Game.iso')
+    await writeFile(iso, Buffer.alloc(2048 * 4))
+    const queries: { jobId: string; finishing: string[]; files: string[] }[] = []
+    let queued = [iso]
+    const h = harness({ deleteOriginals: true }, undefined, (query) => {
+      queries.push(query)
+      return Promise.resolve(query.files.filter((file) => queued.includes(file)))
+    })
+    expect(await h.run({ id: 'first', inputPath: iso, target: 'CHD' })).toMatchObject({ type: 'done' })
+    expect(queries).toEqual([{ jobId: 'first', finishing: ['first'], files: [iso] }])
     expect(h.trashed).toEqual([])
-    expect(logs(h)).toContain('Kept waitcso.iso because other jobs in the queue still need it')
+    expect(logs(h)).toContain('Kept Game.iso because another job in the queue still needs it')
+
+    queued = []
+    expect(await h.run({ id: 'second', inputPath: iso, target: 'ZSO' })).toMatchObject({ type: 'done' })
+    expect(h.trashed).toEqual([iso])
+  })
+
+  it('keeps originals when it cannot find out whether queued jobs need them', async () => {
+    for (const answer of [() => Promise.resolve(null), () => Promise.reject(new Error('The page went away'))]) {
+      const iso = join(inputDir, 'Game.iso')
+      await writeFile(iso, Buffer.alloc(2048))
+      const h = harness({ deleteOriginals: true, overwrite: 'overwrite' }, undefined, answer)
+      expect(await h.run({ inputPath: iso, target: 'CHD' })).toMatchObject({ type: 'done' })
+      expect(h.trashed).toEqual([])
+      expect(logs(h)).toContain('Kept Game.iso because it could not be checked whether queued jobs still need it')
+    }
+  })
+
+  it('decides one job at a time, so jobs that finish together move their image to the trash once', async () => {
+    const iso = join(inputDir, 'Game.iso')
+    const other = join(inputDir, 'Other.iso')
+    for (const file of [iso, other]) await writeFile(file, Buffer.alloc(2048 * 4))
+    let asking = 0
+    let mostAtOnce = 0
+    let release = (): void => undefined
+    const held = new Promise<void>((resolve) => (release = resolve))
+    const h = harness({ deleteOriginals: true, overwrite: 'rename' }, undefined, async (query) => {
+      asking += 1
+      mostAtOnce = Math.max(mostAtOnce, asking)
+      // The job on the other image holds the turn to decide until the test lets it go.
+      if (query.files.includes(other)) await held
+      asking -= 1
+      return []
+    })
+    const first = h.run({ id: 'other', inputPath: other, target: 'CHD' })
+    await waitFor(() => asking === 1)
+    const finals = Promise.all(['a', 'b', 'c'].map((id) => h.run({ id, inputPath: iso, target: 'CHD' })))
+    // All three have converted the image and wait for their turn, so each decides while the others are finishing too.
+    await waitFor(() => logs(h).filter((line) => line.startsWith('Created Game')).length === 3)
+    release()
+    expect(await first).toMatchObject({ type: 'done' })
+    expect((await finals).map((final) => final.type)).toEqual(['done', 'done', 'done'])
+    expect(h.trashed).toEqual([other, iso])
+    expect(mostAtOnce).toBe(1)
+    expect(logs(h).filter((line) => line.startsWith('Kept') || line.startsWith('Could not move'))).toEqual([])
+  })
+
+  it('does not count a failed job that is still cleaning up as reading the image', async () => {
+    const iso = join(inputDir, 'brokencso.iso')
+    await writeFile(iso, Buffer.alloc(2048 * 4))
+    // Removing the failed job's work folder takes a while, as it can on Windows.
+    const workDirs = { add: () => Promise.resolve(), remove: () => new Promise<void>((resolve) => setTimeout(resolve, 1500)) }
+    const h = harness({ deleteOriginals: true }, undefined, () => Promise.resolve([]), { workDirs })
+    const failed = h.run({ id: 'zso', inputPath: iso, target: 'ZSO' })
+    await waitFor(() => logs(h).some((line) => line.startsWith('maxcso exited with code 1')))
+    expect(await h.run({ id: 'chd', inputPath: iso, target: 'CHD' })).toMatchObject({ type: 'done' })
+    expect(h.trashed).toEqual([iso])
+    expect(await failed).toMatchObject({ type: 'failed' })
+  })
+
+  it('moves an image converted by several jobs at once to the trash exactly once, after the last one', async () => {
+    const iso = join(inputDir, 'Game.iso')
+    await writeFile(iso, Buffer.alloc(2048 * 4))
+    const h = harness({ deleteOriginals: true, overwrite: 'rename' }, undefined, () => Promise.resolve([]))
+    const finals = await Promise.all(['a', 'b', 'c'].map((id) => h.run({ id, inputPath: iso, target: 'CHD' })))
+    expect(finals.map((final) => final.type)).toEqual(['done', 'done', 'done'])
+    expect(h.trashed).toEqual([iso])
+    expect(logs(h).filter((line) => line.startsWith('Moved '))).toEqual(['Moved Game.iso to the trash'])
   })
 
   it('keeps track files outside the folder of the sheet when moving originals to the trash', async () => {

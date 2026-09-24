@@ -12,7 +12,7 @@ import {
 } from 'electron'
 import { IPC, type FileFilter, type OpenTextOptions, type SaveTextOptions } from '@shared/api'
 import { INPUT_EXTENSIONS, TARGETS, normalizeJobSettings } from '@shared/formats'
-import type { JobEvent, RunJobRequest, SystemInfo, TaskbarProgress, Target } from '@shared/types'
+import type { FilesInUseQuery, FilesInUseReply, JobEvent, RunJobRequest, SystemInfo, TaskbarProgress, Target } from '@shared/types'
 import type { JobRunner } from './jobs/runner'
 import { scanPaths } from './scan'
 import type { SettingsStore } from './settings'
@@ -22,14 +22,25 @@ import { isAppUrl, isExternalLink } from './window'
 const EVENT_FLUSH_MS = 100
 const MAX_TEXT_FILE_BYTES = 16 * 1024 * 1024
 const MAX_SCAN_PATHS = 10_000
+const FILES_IN_USE_TIMEOUT_MS = 10_000
 
 export interface IpcDependencies {
   window: () => BrowserWindow | null
   settings: SettingsStore
   tools: ToolRegistry
   runner: JobRunner
+  /** Whether the page has registered its listeners (see `rendererReady`). */
+  isRendererReady: () => boolean
   onRendererReady: () => void
   onBusyChange: (busy: boolean) => void
+}
+
+export interface IpcBridge {
+  events: JobEventBatcher
+  /** Ask the page which of `files` jobs other than `jobId` still need; null when it cannot answer. */
+  filesInUse: (query: Omit<FilesInUseQuery, 'requestId'>) => Promise<string[] | null>
+  /** Forget what was meant for a page that crashed or is reloading: queued events and unanswered questions. */
+  resetRenderer: () => void
 }
 
 /** Sends job events to the renderer at most every EVENT_FLUSH_MS, keeping only the latest progress per job. */
@@ -56,6 +67,13 @@ export class JobEventBatcher {
     const events = this.queue
     this.queue = []
     this.send(events)
+  }
+
+  /** Drop events that have not been sent yet. */
+  clear(): void {
+    if (this.timer) clearTimeout(this.timer)
+    this.timer = null
+    this.queue = []
   }
 }
 
@@ -95,8 +113,7 @@ function runRequest(value: unknown): RunJobRequest {
     id,
     inputPath: absolutePath(raw.inputPath, 'input path'),
     target: raw.target as Target,
-    settings: normalizeJobSettings(raw.settings),
-    keepOriginals: raw.keepOriginals === true
+    settings: normalizeJobSettings(raw.settings)
   }
 }
 
@@ -109,7 +126,7 @@ export function rendererSettingsPatch(value: unknown): Record<string, unknown> {
   return patch
 }
 
-export function registerIpc(deps: IpcDependencies): JobEventBatcher {
+export function registerIpc(deps: IpcDependencies): IpcBridge {
   const { settings, tools, runner } = deps
 
   /** Only the main frame of the app's window, showing the app's own page, may use the API. */
@@ -269,8 +286,44 @@ export function registerIpc(deps: IpcDependencies): JobEventBatcher {
   on(IPC.busy, (busy) => deps.onBusyChange(busy === true))
   on(IPC.rendererReady, () => deps.onRendererReady())
 
-  return new JobEventBatcher((events) => {
+  const events = new JobEventBatcher((batch) => {
     const window = deps.window()
-    if (window && !window.isDestroyed()) window.webContents.send(IPC.jobEvents, events)
+    if (window && !window.isDestroyed()) window.webContents.send(IPC.jobEvents, batch)
   })
+
+  const questions = new Map<number, (files: string[] | null) => void>()
+  let nextQuestion = 1
+  on(IPC.filesInUseReply, (value) => {
+    const reply = (value && typeof value === 'object' ? value : {}) as Partial<FilesInUseReply>
+    const settle = typeof reply.requestId === 'number' ? questions.get(reply.requestId) : undefined
+    settle?.(Array.isArray(reply.files) ? reply.files.filter((file): file is string => typeof file === 'string') : null)
+  })
+
+  const filesInUse: IpcBridge['filesInUse'] = (query) =>
+    new Promise((resolve) => {
+      const window = deps.window()
+      if (!window || window.isDestroyed() || !deps.isRendererReady()) {
+        resolve(null)
+        return
+      }
+      // The page has to see every earlier job event, such as another job finishing, before it answers.
+      events.flush()
+      const requestId = nextQuestion++
+      const timer = setTimeout(() => questions.get(requestId)?.(null), FILES_IN_USE_TIMEOUT_MS)
+      questions.set(requestId, (files) => {
+        clearTimeout(timer)
+        questions.delete(requestId)
+        resolve(files)
+      })
+      window.webContents.send(IPC.filesInUse, { requestId, ...query } satisfies FilesInUseQuery)
+    })
+
+  return {
+    events,
+    filesInUse,
+    resetRenderer: () => {
+      events.clear()
+      for (const settle of [...questions.values()]) settle(null)
+    }
+  }
 }

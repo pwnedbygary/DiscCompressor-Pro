@@ -143,8 +143,25 @@ export interface RunJobRequest {
   inputPath: string
   target: Target
   settings: JobSettings
-  /** Never move the input to the trash, because other jobs in the queue still need it. */
-  keepOriginals?: boolean
+}
+
+/**
+ * Right before moving a finished job's originals to the trash, the main
+ * process asks the renderer which of them queued or running jobs still need.
+ */
+export interface FilesInUseQuery {
+  requestId: number
+  /** The job whose originals would go to the trash. */
+  jobId: string
+  /** Jobs whose tools have finished, so they no longer read their inputs. */
+  finishing: string[]
+  files: string[]
+}
+
+export interface FilesInUseReply {
+  requestId: number
+  /** The subset of the query's files that other jobs still need. */
+  files: string[]
 }
 
 export type JobEvent =

@@ -13,7 +13,7 @@ import { Toasts } from './components/Toasts'
 import { useFileDrop } from './hooks/useFileDrop'
 import { useShortcuts } from './hooks/useShortcuts'
 import { api } from './lib/api'
-import { handleJobEvents, startQueue, stopQueue, watchActivity, watchScheduler } from './store/scheduler'
+import { filesInUse, handleJobEvents, startQueue, stopQueue, watchActivity, watchScheduler } from './store/scheduler'
 import { useUi } from './store/ui'
 
 export function App() {
@@ -25,6 +25,7 @@ export function App() {
   useEffect(() => {
     const unsubscribers = [
       api.onJobEvents(handleJobEvents),
+      api.answerFilesInUse(filesInUse),
       api.onOpenPaths((paths) => void addPaths(paths)),
       api.onCommand((command) => {
         switch (command) {

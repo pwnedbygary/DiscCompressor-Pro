@@ -1,6 +1,6 @@
 import { type IpcRendererEvent, contextBridge, ipcRenderer, webUtils } from 'electron'
 import { type DiscApi, IPC } from '@shared/api'
-import type { AppCommand, JobEvent } from '@shared/types'
+import type { AppCommand, FilesInUseQuery, FilesInUseReply, JobEvent } from '@shared/types'
 
 function subscribe<T>(channel: string, listener: (payload: T) => void): () => void {
   const handler = (_event: IpcRendererEvent, payload: T): void => listener(payload)
@@ -26,6 +26,18 @@ const api: DiscApi = {
   runJob: (request) => ipcRenderer.invoke(IPC.runJob, request),
   cancelJob: (id) => ipcRenderer.invoke(IPC.cancelJob, id),
   onJobEvents: (listener) => subscribe<JobEvent[]>(IPC.jobEvents, listener),
+  answerFilesInUse: (answer) =>
+    subscribe<FilesInUseQuery>(IPC.filesInUse, (query) => {
+      let files: string[]
+      try {
+        files = answer(query)
+      } catch {
+        // Without an answer every file counts as needed, so nothing goes to the trash.
+        files = query.files
+      }
+      const reply: FilesInUseReply = { requestId: query.requestId, files }
+      ipcRenderer.send(IPC.filesInUseReply, reply)
+    }),
   onOpenPaths: (listener) => subscribe<string[]>(IPC.openPaths, listener),
   onCommand: (listener) => subscribe<AppCommand>(IPC.command, listener),
   rendererReady: () => ipcRenderer.send(IPC.rendererReady),

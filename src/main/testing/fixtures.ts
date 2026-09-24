@@ -97,7 +97,8 @@ const args = process.argv.slice(2)
 if (args[0] === '--version') { console.error('maxcso v1.13.0'); process.exit(1) }
 const out = args[args.indexOf('-o') + 1]
 const input = args[args.length - 1]
-if (input.includes('fail')) { console.error('Error while processing ' + input + ': simulated failure'); process.exit(1) }
+// "brokencso" fails in maxcso only, so a chdman job on the same image can succeed.
+if (input.includes('fail') || input.includes('brokencso')) { console.error('Error while processing ' + input + ': simulated failure'); process.exit(1) }
 const data = fs.readFileSync(input)
 fs.writeFileSync(out, args.includes('--decompress') ? Buffer.alloc(8192) : Buffer.concat([Buffer.from('CISO'), data.subarray(0, 16), Buffer.from(args.join(' '))]))
 // "waitcso" keeps only maxcso busy, so a chdman job on the same image can finish first.

@@ -31,6 +31,12 @@ export interface RunnerDependencies {
   tools: (refresh: boolean) => Promise<ToolsStatus>
   emit: (event: JobEvent) => void
   trash: (path: string) => Promise<void>
+  /**
+   * Which of `files` queued or running jobs other than `jobId` still need, or
+   * null when that cannot be found out. Without it only the jobs this runner
+   * is running count.
+   */
+  filesInUse?: (query: { jobId: string; finishing: string[]; files: string[] }) => Promise<string[] | null>
   /** Records work directories so that they can be removed after a crash. */
   workDirs?: WorkDirRegistry
   /** Called whenever the number of running jobs changes. */
@@ -51,6 +57,8 @@ interface ActiveJob {
   inputIds: Set<string>
   /** Claim keys of every file the job may write. */
   outputs: Set<string>
+  /** Set once the job's tools have finished, after which it no longer reads its inputs. */
+  finishing: boolean
 }
 
 interface JobContext {
@@ -149,6 +157,8 @@ export class JobRunner {
   private readonly processes = new Set<RunningTool>()
   /** Files created since the app started, mapped to the claim key of the image each was made from. */
   private readonly producedBy = new Map<string, string>()
+  /** Settles when the job currently deciding which originals to move to the trash is done. */
+  private trashing: Promise<void> = Promise.resolve()
   private closing = false
 
   constructor(private readonly deps: RunnerDependencies) {}
@@ -172,7 +182,8 @@ export class JobRunner {
       source,
       inputs: new Set([source]),
       inputIds: new Set(),
-      outputs: new Set()
+      outputs: new Set(),
+      finishing: false
     }
     this.active.set(request.id, job)
     this.deps.onActiveChange?.(this.active.size)
@@ -270,6 +281,7 @@ export class JobRunner {
 
       log('info', `Started ${input.name} → ${ext ?? request.target}`)
       await this.execute(plan, tools, context)
+      job.finishing = true
       const outputs = outputDir ? await this.finalize(plan, context, outputDir, policy) : []
       for (const output of outputs) this.producedBy.set(claimKey(output), job.source)
       const outputBytes = (await Promise.all(outputs.map(sizeOf))).reduce((sum, bytes) => sum + bytes, 0)
@@ -279,12 +291,13 @@ export class JobRunner {
         const share = percent !== null && percent > 0 && percent < 0.1 ? 'under 0.1%' : `${percent?.toFixed(1)}%`
         const ratio = percent === null ? '' : ` (${share} of the original)`
         log('success', `Created ${basename(outputs[0])}: ${formatBytes(outputBytes)}${ratio}`)
-        await this.afterSuccess(outputs, input, { job, renamed, policy, keepOriginals: request.keepOriginals === true }, log)
+        await this.afterSuccess(outputs, input, { jobId: request.id, job, renamed, policy }, log)
       } else {
         log('success', `Finished ${input.name}`)
       }
       return { type: 'done', jobId: request.id, outputs, outputBytes, skipped: false }
     } catch (error) {
+      job.finishing = true
       if (signal.aborted) {
         log('warn', 'Cancelled')
         return { type: 'cancelled', jobId: request.id }
@@ -331,7 +344,7 @@ export class JobRunner {
 
   private readByOther(path: string, job: ActiveJob): boolean {
     const key = claimKey(path)
-    return [...this.active.values()].some((other) => other !== job && other.inputs.has(key))
+    return [...this.active.values()].some((other) => other !== job && !other.finishing && other.inputs.has(key))
   }
 
   /**
@@ -561,7 +574,7 @@ export class JobRunner {
   private async afterSuccess(
     outputs: string[],
     input: ScannedInput,
-    { job, renamed, policy, keepOriginals }: { job: ActiveJob; renamed: boolean; policy: OverwritePolicy; keepOriginals: boolean },
+    { jobId, job, renamed, policy }: { jobId: string; job: ActiveJob; renamed: boolean; policy: OverwritePolicy },
     log: JobContext['log']
   ): Promise<void> {
     const settings = this.deps.settings()
@@ -577,31 +590,56 @@ export class JobRunner {
       }
     }
     if (!settings.deleteOriginals) return
-    if (keepOriginals) {
-      log('info', `Kept ${input.name} because other jobs in the queue still need it`)
-      return
-    }
-    const outputKeys = new Set(outputs.map(claimKey))
-    const outputIds = new Set((await Promise.all(outputs.map(fileState))).flatMap((state) => (state.id ? [state.id] : [])))
-    const folder = dirname(input.path)
-    for (const file of input.files) {
-      if (outputKeys.has(claimKey(file))) continue
-      const { id } = await fileState(file)
-      if (id !== null && outputIds.has(id)) continue
-      if (file !== input.path && !isInside(folder, file)) {
-        log('warn', `Kept ${basename(file)} because it is outside the folder of ${input.name}`)
-        continue
+    // Jobs decide one at a time, so that of several jobs converting the same image the last one moves it.
+    await this.exclusively(async () => {
+      const outputKeys = new Set(outputs.map(claimKey))
+      const outputIds = new Set((await Promise.all(outputs.map(fileState))).flatMap((state) => (state.id ? [state.id] : [])))
+      const folder = dirname(input.path)
+      const candidates: string[] = []
+      for (const file of input.files) {
+        if (outputKeys.has(claimKey(file))) continue
+        const { exists, id } = await fileState(file)
+        // Gone already, e.g. moved by a job that converted the same image at the same time.
+        if (!exists) continue
+        if (id !== null && outputIds.has(id)) continue
+        if (file !== input.path && !isInside(folder, file)) {
+          log('warn', `Kept ${basename(file)} because it is outside the folder of ${input.name}`)
+          continue
+        }
+        if (this.readByOther(file, job)) {
+          log('info', `Kept ${basename(file)} because another job is still using it`)
+          continue
+        }
+        candidates.push(file)
       }
-      if (this.readByOther(file, job)) {
-        log('info', `Kept ${basename(file)} because another job is still using it`)
-        continue
+      if (candidates.length === 0) return
+      // Asked only now, so that jobs queued while this one ran count too.
+      const finishing = [...this.active].flatMap(([id, other]) => (other.finishing ? [id] : []))
+      const inUse = this.deps.filesInUse ? await this.deps.filesInUse({ jobId, finishing, files: candidates }).catch(() => null) : []
+      if (inUse === null) {
+        for (const file of candidates) log('warn', `Kept ${basename(file)} because it could not be checked whether queued jobs still need it`)
+        return
       }
-      try {
-        await this.deps.trash(file)
-        log('info', `Moved ${basename(file)} to the trash`)
-      } catch (error) {
-        log('warn', `Could not move ${basename(file)} to the trash: ${(error as Error).message}`)
+      const needed = new Set(inUse.map(claimKey))
+      for (const file of candidates) {
+        if (needed.has(claimKey(file))) {
+          log('info', `Kept ${basename(file)} because another job in the queue still needs it`)
+          continue
+        }
+        try {
+          await this.deps.trash(file)
+          log('info', `Moved ${basename(file)} to the trash`)
+        } catch (error) {
+          log('warn', `Could not move ${basename(file)} to the trash: ${(error as Error).message}`)
+        }
       }
-    }
+    })
+  }
+
+  /** Run `work` once every earlier call has finished. */
+  private exclusively(work: () => Promise<void>): Promise<void> {
+    const run = this.trashing.then(work)
+    this.trashing = run.catch(() => undefined)
+    return run
   }
 }

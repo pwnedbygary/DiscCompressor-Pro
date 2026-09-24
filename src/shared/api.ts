@@ -1,6 +1,7 @@
 import type {
   AppCommand,
   AppSettings,
+  FilesInUseQuery,
   JobEvent,
   RunJobRequest,
   ScanResult,
@@ -24,6 +25,8 @@ export const IPC = {
   runJob: 'jobs:run',
   cancelJob: 'jobs:cancel',
   jobEvents: 'jobs:events',
+  filesInUse: 'jobs:files-in-use',
+  filesInUseReply: 'jobs:files-in-use-reply',
   openPaths: 'app:open-paths',
   command: 'app:command',
   showInFolder: 'shell:show-in-folder',
@@ -70,6 +73,8 @@ export interface DiscApi {
   runJob(request: RunJobRequest): Promise<void>
   cancelJob(id: string): Promise<void>
   onJobEvents(listener: (events: JobEvent[]) => void): () => void
+  /** Answer the main process's questions about which input files other jobs still need (see FilesInUseQuery). */
+  answerFilesInUse(answer: (query: FilesInUseQuery) => string[]): () => void
   onOpenPaths(listener: (paths: string[]) => void): () => void
   onCommand(listener: (command: AppCommand) => void): () => void
   /** Tells the main process the renderer is listening, so queued paths can be delivered. */

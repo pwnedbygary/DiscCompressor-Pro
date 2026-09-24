@@ -2,8 +2,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { DEFAULT_JOB_SETTINGS } from '@shared/formats'
 import type { AppSettings, JobEvent, ScannedInput } from '@shared/types'
 import { useLog } from './log'
-import { useQueue } from './queue'
-import { handleJobEvents, removeJobs, startQueue, stopQueue, watchActivity, watchScheduler } from './scheduler'
+import { markFailed, useQueue } from './queue'
+import { filesInUse, handleJobEvents, removeJobs, startQueue, stopQueue, watchActivity, watchScheduler } from './scheduler'
 import { useSettings } from './settings'
 import { useToasts } from './toasts'
 
@@ -12,7 +12,7 @@ const env = vi.hoisted(() => {
     focused: true,
     notifications: [] as string[],
     api: {
-      runJob: vi.fn((_request: { id: string; keepOriginals?: boolean }) => Promise.resolve()),
+      runJob: vi.fn((_request: { id: string }) => Promise.resolve()),
       cancelJob: vi.fn((_id: string) => Promise.resolve()),
       setBusy: vi.fn((_busy: boolean) => undefined),
       setTaskbarProgress: vi.fn()
@@ -135,22 +135,84 @@ describe('running the queue', () => {
     expect(messages()).toContain('Queue finished: 2 finished, 1 failed')
   })
 
-  it('asks to keep the originals while other queued jobs still need them', async () => {
-    useQueue.getState().duplicate([idOf('A.iso')])
-    removeJobs([idOf('B.iso'), idOf('C.iso')])
-    startQueue()
-    handleJobEvents([done('A.iso')])
-    await flush()
-    expect(api.runJob.mock.calls.map(([request]) => request.keepOriginals)).toEqual([true, false])
-    handleJobEvents([{ type: 'done', jobId: useQueue.getState().order[1] as string, outputs: [], outputBytes: 0, skipped: false }])
-    await flush()
-  })
-
   it('does nothing when no job is queued', () => {
     removeJobs(useQueue.getState().order)
     startQueue()
     expect(useQueue.getState().running).toBe(false)
     expect(useToasts.getState().toasts.map((toast) => toast.title)).toEqual(['Nothing to process'])
+  })
+})
+
+describe('telling the main process which originals other jobs still need', () => {
+  const A = '/in/A.iso'
+  /** What the main process is told when `id` finishes (and is the only job finishing). */
+  const neededWhenDone = (id: string, finishing = [id], files = [A]): string[] => filesInUse({ requestId: 1, jobId: id, finishing, files })
+  const finish = async (id: string): Promise<void> => {
+    handleJobEvents([{ type: 'done', jobId: id, outputs: [], outputBytes: 0, skipped: false }])
+    await flush()
+  }
+  const copyOfA = (): [string, string] => {
+    removeJobs([idOf('B.iso'), idOf('C.iso')])
+    useQueue.getState().duplicate([idOf('A.iso')])
+    return useQueue.getState().order as [string, string]
+  }
+
+  it('keeps an image for a copy of the job added while it runs', async () => {
+    removeJobs([idOf('B.iso'), idOf('C.iso')])
+    startQueue()
+    useQueue.getState().duplicate([idOf('A.iso')])
+    const [first, copy] = useQueue.getState().order as [string, string]
+    expect(neededWhenDone(first)).toEqual([A])
+    await finish(first)
+    expect(useQueue.getState().jobs[copy]?.status).toBe('running')
+    expect(neededWhenDone(copy)).toEqual([])
+  })
+
+  it('leaves an image converted by two jobs at once to the one that finishes last', async () => {
+    setSettings({ maxConcurrentJobs: 2 })
+    const [first, copy] = copyOfA()
+    startQueue()
+    expect(launched()).toEqual(['A.iso', 'A.iso'])
+    expect(neededWhenDone(first)).toEqual([A])
+    await finish(first)
+    expect(neededWhenDone(copy)).toEqual([])
+  })
+
+  it('keeps an image while a queued job still needs it', async () => {
+    const [first, copy] = copyOfA()
+    startQueue()
+    expect(launched()).toEqual(['A.iso'])
+    expect(neededWhenDone(first)).toEqual([A])
+    await finish(first)
+    expect(neededWhenDone(copy)).toEqual([])
+  })
+
+  it('keeps an image for a job that "Stop queue" cancelled, which runs again later', async () => {
+    setSettings({ maxConcurrentJobs: 2 })
+    const [first, copy] = copyOfA()
+    startQueue()
+    stopQueue()
+    // The first job had already converted the image; the copy is being cancelled and returns to the queue.
+    expect(neededWhenDone(first, [first, copy])).toEqual([A])
+    handleJobEvents([{ type: 'cancelled', jobId: copy }])
+    await flush()
+    expect(useQueue.getState().jobs[copy]?.status).toBe('queued')
+    expect(neededWhenDone(first)).toEqual([A])
+    await finish(first)
+  })
+
+  it('ignores jobs that have finished their work and only answers for the files asked about', () => {
+    setSettings({ maxConcurrentJobs: 2 })
+    const [first, copy] = copyOfA()
+    startQueue()
+    expect(neededWhenDone(first, [first, copy])).toEqual([])
+    expect(neededWhenDone(first, [first], ['/in/other.iso', '/IN/a.ISO'])).toEqual(['/IN/a.ISO'])
+  })
+
+  it('does not count finished or failed jobs, which only run again when asked to', () => {
+    const [first, copy] = copyOfA()
+    markFailed(copy, 'boom')
+    expect(neededWhenDone(first)).toEqual([])
   })
 })
 

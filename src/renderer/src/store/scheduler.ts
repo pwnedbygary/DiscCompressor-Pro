@@ -1,4 +1,4 @@
-import type { JobEvent, TaskbarProgress } from '@shared/types'
+import type { FilesInUseQuery, JobEvent, TaskbarProgress } from '@shared/types'
 import { api } from '../lib/api'
 import { errorMessage } from '../lib/errors'
 import { isFinished } from '../lib/jobs'
@@ -23,26 +23,30 @@ function counts(): { queued: number; running: number } {
   return { queued, running }
 }
 
-/** Whether another queued or running job reads any of this job's files, so they must not go to the trash yet. */
-function inputsNeededElsewhere(id: string): boolean {
+/**
+ * The files among `query.files` that queued or running jobs other than
+ * `query.jobId` still need, asked right before that job's originals would go
+ * to the trash. Paths are compared case-insensitively, like the main process
+ * compares them, which at worst keeps a file.
+ */
+export function filesInUse(query: FilesInUseQuery): string[] {
   const { order, jobs } = useQueue.getState()
-  const job = jobs[id]
-  if (!job) return false
-  const key = (path: string): string => (api.platform === 'win32' ? path.toLowerCase() : path)
-  const files = new Set(job.input.files.map(key))
-  return order.some((otherId) => {
-    const other = jobs[otherId]
-    if (otherId === id || !other || (other.status !== 'queued' && other.status !== 'running')) return false
-    return other.input.files.some((file) => files.has(key(file)))
-  })
+  // A finishing job no longer reads its files, unless "Stop queue" cancelled it: it then returns to the queue.
+  const ignored = new Set([query.jobId, ...query.finishing.filter((id) => !stopping.has(id))])
+  const needed = new Set<string>()
+  for (const id of order) {
+    const job = jobs[id]
+    if (!job || ignored.has(id) || (job.status !== 'queued' && job.status !== 'running')) continue
+    for (const file of job.input.files) needed.add(file.toLowerCase())
+  }
+  return query.files.filter((file) => needed.has(file.toLowerCase()))
 }
 
 function launch(id: string): void {
   const job = getJob(id)
   if (!job) return
-  const keepOriginals = inputsNeededElsewhere(id)
   markRunning(id)
-  api.runJob({ id, inputPath: job.input.path, target: job.target, settings: job.settings, keepOriginals }).catch((error: unknown) => {
+  api.runJob({ id, inputPath: job.input.path, target: job.target, settings: job.settings }).catch((error: unknown) => {
     stopping.delete(id)
     const message = errorMessage(error)
     markFailed(id, message)
