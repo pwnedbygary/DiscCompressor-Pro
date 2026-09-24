@@ -85,10 +85,25 @@ def render(src: Image.Image, size: int, tile_inset: float, content_scale: float)
     return canvas.resize((size, size), Image.Resampling.BOX)
 
 
+def render_for_size(src: Image.Image, size: int) -> Image.Image:
+    # At 48px and below the artwork is enlarged within the tile so it stays legible.
+    if size <= 48:
+        return render(src, size, tile_inset=0.02, content_scale=1.18)
+    return render(src, size, tile_inset=0.03, content_scale=1.0)
+
+
 def save_png(image: Image.Image, path: Path) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     image.save(path, format="PNG", optimize=True)
     print(f"wrote {path.relative_to(ROOT)} ({image.width}x{image.height})")
+
+
+def save_ico(src: Image.Image, path: Path) -> None:
+    sizes = [16, 24, 32, 48, 64, 128, 256]
+    frames = {size: render_for_size(src, size) for size in sizes}
+    path.parent.mkdir(parents=True, exist_ok=True)
+    frames[256].save(path, format="ICO", sizes=[(s, s) for s in sizes], append_images=[frames[s] for s in sizes[:-1]])
+    print(f"wrote {path.relative_to(ROOT)} ({', '.join(map(str, sizes))})")
 
 
 def main() -> None:
@@ -100,12 +115,15 @@ def main() -> None:
     if src.size != (SOURCE_SIZE, SOURCE_SIZE):
         raise SystemExit(f"expected a {SOURCE_SIZE}x{SOURCE_SIZE} source image, got {src.size}")
 
-    save_png(render(src, 512, tile_inset=0.03, content_scale=1.0), ROOT / "icon.png")
-
-    # Tray icons are shown at 16-32px, so the artwork is enlarged within the tile.
-    tray = render(src, 64, tile_inset=0.02, content_scale=1.18)
-    save_png(tray, ROOT / "assets" / "tray-icon.png")
-    save_png(tray, ROOT / "assets" / "tray-icon-64.png")
+    # Packaging (electron-builder buildResources).
+    save_png(render_for_size(src, 1024), ROOT / "build" / "icon.png")
+    save_ico(src, ROOT / "build" / "icon.ico")
+    # Runtime: window icon, Windows tray icon and Linux tray icon.
+    save_png(render_for_size(src, 512), ROOT / "resources" / "icons" / "icon.png")
+    save_ico(src, ROOT / "resources" / "icons" / "icon.ico")
+    save_png(render(src, 64, tile_inset=0.02, content_scale=1.18), ROOT / "resources" / "icons" / "tray.png")
+    # Shown inside the app.
+    save_png(render_for_size(src, 256), ROOT / "src" / "renderer" / "src" / "assets" / "icon.png")
 
 
 if __name__ == "__main__":
