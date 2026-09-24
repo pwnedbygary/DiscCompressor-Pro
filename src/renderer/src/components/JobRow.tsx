@@ -142,7 +142,11 @@ export const JobRow = memo(function JobRow({ id, position, total, onDragStartRow
             {job.startedAt && job.finishedAt && <span className="hidden text-muted tabular-nums @3xl:inline">in {formatDuration(job.finishedAt - job.startedAt)}</span>}
           </span>
         )}
-        {job.status === 'skipped' && <span className="text-warning-ink">Output already exists</span>}
+        {job.status === 'skipped' && (
+          <span className="text-warning-ink" title="Run the job again to write a numbered copy">
+            Output already exists
+          </span>
+        )}
         {job.status === 'cancelled' && <span className="text-muted">Cancelled</span>}
         {job.status === 'failed' && (
           <span className="line-clamp-2 text-danger-ink" title={job.error ?? undefined}>

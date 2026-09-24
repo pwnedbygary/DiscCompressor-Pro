@@ -113,7 +113,8 @@ function runRequest(value: unknown): RunJobRequest {
     id,
     inputPath: absolutePath(raw.inputPath, 'input path'),
     target: raw.target as Target,
-    settings: normalizeJobSettings(raw.settings)
+    settings: normalizeJobSettings(raw.settings),
+    rerun: raw.rerun === true
   }
 }
 
@@ -163,26 +164,43 @@ export function registerIpc(deps: IpcDependencies): IpcBridge {
     homeDir: homedir()
   }))
 
-  /** Moving originals to the trash is destructive, so it is only switched on after the user confirms it here. */
-  const confirmDeleteOriginals = async (): Promise<boolean> => {
+  /** Ask the user to confirm a destructive setting; true if they did. */
+  const confirm = async (action: string, title: string, message: string, detail: string): Promise<boolean> => {
     const window = deps.window()
-    const options = {
-      type: 'warning' as const,
-      buttons: ['Move originals to the trash', 'Cancel'],
-      defaultId: 1,
-      cancelId: 1,
-      title: 'Move originals to the trash?',
-      message: 'Move the original images to the trash after each successful conversion?',
-      detail: 'This applies to every conversion and extraction from now on, including every track file of a cue or GDI sheet. Info and Verify never remove anything.'
-    }
+    const options = { type: 'warning' as const, buttons: [action, 'Cancel'], defaultId: 1, cancelId: 1, title, message, detail }
     const { response } = window ? await dialog.showMessageBox(window, options) : await dialog.showMessageBox(options)
     return response === 0
   }
 
   handle(IPC.getSettings, () => settings.get())
+  // Settings that can destroy files only change after the user confirms them here, whatever the page asks for.
   handle(IPC.updateSettings, async (value) => {
     const patch = rendererSettingsPatch(value)
-    if (patch.deleteOriginals === true && !settings.get().deleteOriginals && !(await confirmDeleteOriginals())) delete patch.deleteOriginals
+    const current = settings.get()
+    if (
+      patch.deleteOriginals === true &&
+      !current.deleteOriginals &&
+      !(await confirm(
+        'Move originals to the trash',
+        'Move originals to the trash?',
+        'Move the original images to the trash after each successful conversion?',
+        'This applies to every conversion and extraction from now on, including every track file of a cue or GDI sheet. Info and Verify never remove anything.'
+      ))
+    ) {
+      delete patch.deleteOriginals
+    }
+    if (
+      patch.overwrite === 'overwrite' &&
+      current.overwrite !== 'overwrite' &&
+      !(await confirm(
+        'Replace existing files',
+        'Replace existing files?',
+        'Replace files that already exist in the output folder?',
+        'From now on, a finished job replaces any file with the same name as its output. A job never replaces its own input or a file another job is writing.'
+      ))
+    ) {
+      delete patch.overwrite
+    }
     return settings.update(patch)
   })
   handle(IPC.getTools, (refresh) => tools.get(settings.get(), refresh === true))

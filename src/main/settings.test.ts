@@ -47,7 +47,7 @@ describe('sanitizeSettings', () => {
       outputDirectory: base.outputDirectory,
       themeId: base.themeId,
       maxConcurrentJobs: 1,
-      overwrite: 'overwrite',
+      overwrite: 'skip',
       chdmanPath: '',
       window: null
     })

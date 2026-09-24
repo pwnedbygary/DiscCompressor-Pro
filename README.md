@@ -29,8 +29,9 @@ for every job.
   success, so cancelled or failed jobs leave nothing half-written behind (and anything left by a crash is removed at the next start). An
   input file is never overwritten, jobs never overwrite each other's results, and "delete originals" moves files to the trash — never after
   Info or Verify. Verify only passes when chdman confirms every checksum.
-- **Extras:** `.m3u` playlists for multi-disc games, overwrite/skip/keep-both policy, output next to the source files or in one folder,
-  queue import/export (including v1 queue files), a searchable console, 13 themes plus "match system", and minimize-to-tray.
+- **Extras:** `.m3u` playlists for multi-disc games, a skip/keep-both/replace choice for outputs that already exist (skip by default;
+  running a job again writes a numbered copy), output next to the source files or in one folder, queue import/export (including v1 queue
+  files), a searchable console, 13 themes plus "match system", and minimize-to-tray.
 
 ## Tools
 

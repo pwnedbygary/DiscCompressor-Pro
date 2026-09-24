@@ -143,6 +143,8 @@ export interface RunJobRequest {
   inputPath: string
   target: Target
   settings: JobSettings
+  /** The user asked for this job to run again: write a numbered output instead of skipping an existing one. */
+  rerun?: boolean
 }
 
 /**

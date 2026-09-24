@@ -241,7 +241,8 @@ export class JobRunner {
 
       const settings = normalizeJobSettings(request.settings)
       const appSettings = this.deps.settings()
-      const policy = appSettings.overwrite
+      // A job the user asked to run again writes a new, numbered output instead of skipping the existing one.
+      const policy: OverwritePolicy = appSettings.overwrite === 'skip' && request.rerun === true ? 'rename' : appSettings.overwrite
       const ext = outputExtension(input, request.target, settings)
       let baseName = basename(input.name, extname(input.name))
       let outputDir: string | null = null

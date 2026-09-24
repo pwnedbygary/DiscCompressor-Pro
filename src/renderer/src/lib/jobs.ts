@@ -24,6 +24,12 @@ export interface Job {
   error: string | null
   outputs: string[]
   outputBytes: number | null
+  /**
+   * The user asked for this job to run again (Run again, a settings change on
+   * a finished job, Duplicate), so it writes a new output even when existing
+   * outputs are skipped.
+   */
+  rerun: boolean
 }
 
 export const INPUT_LABELS: Record<InputKind, string> = {

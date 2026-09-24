@@ -135,6 +135,18 @@ describeUnix('JobRunner', () => {
     expect(await readFile(join(outputDir, 'Game.chd'), 'utf8')).toMatch(/^CHD:/)
   })
 
+  it('writes a numbered output for a job the user runs again, even when existing outputs are skipped', async () => {
+    const iso = join(inputDir, 'Game.iso')
+    await writeFile(iso, Buffer.alloc(2048))
+    const h = harness({ overwrite: 'skip' })
+    expect(await h.run({ id: 'first', inputPath: iso, target: 'CHD' })).toMatchObject({ skipped: false, outputs: [join(outputDir, 'Game.chd')] })
+    expect(await h.run({ id: 'again', inputPath: iso, target: 'CHD' })).toMatchObject({ skipped: true, outputs: [join(outputDir, 'Game.chd')] })
+    expect(await h.run({ id: 'rerun', inputPath: iso, target: 'CHD', rerun: true })).toMatchObject({
+      skipped: false,
+      outputs: [join(outputDir, 'Game (1).chd')]
+    })
+  })
+
   it('never overwrites the input, even with the overwrite policy', async () => {
     const cso = join(inputDir, 'Game.cso')
     await writeFile(cso, syntheticCso(2048 * 4))

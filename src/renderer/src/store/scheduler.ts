@@ -46,7 +46,7 @@ function launch(id: string): void {
   const job = getJob(id)
   if (!job) return
   markRunning(id)
-  api.runJob({ id, inputPath: job.input.path, target: job.target, settings: job.settings }).catch((error: unknown) => {
+  api.runJob({ id, inputPath: job.input.path, target: job.target, settings: job.settings, rerun: job.rerun }).catch((error: unknown) => {
     stopping.delete(id)
     const message = errorMessage(error)
     markFailed(id, message)

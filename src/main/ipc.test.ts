@@ -1,6 +1,7 @@
 import type { BrowserWindow } from 'electron'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { IPC } from '@shared/api'
+import { normalizeJobSettings } from '@shared/formats'
 import type { JobEvent } from '@shared/types'
 import { JobEventBatcher, registerIpc, rendererSettingsPatch } from './ipc'
 import type { JobRunner } from './jobs/runner'
@@ -129,5 +130,19 @@ describe('asking the page which files other jobs need', () => {
     ipc.resetRenderer()
     reply({ requestId: 1, files: ['/in/A.iso'] })
     expect(await reset).toBeNull()
+  })
+})
+
+describe('starting jobs', () => {
+  it('hands the runner only validated fields', () => {
+    const start = vi.fn()
+    const { invoke } = connect({ runner: { start } })
+    invoke(IPC.runJob, { id: 'job-1', inputPath: '/in/A.iso', target: 'CHD', settings: {}, rerun: true, extra: 'x' })
+    expect(start).toHaveBeenLastCalledWith({ id: 'job-1', inputPath: '/in/A.iso', target: 'CHD', settings: normalizeJobSettings({}), rerun: true })
+    invoke(IPC.runJob, { id: 'job-2', inputPath: '/in/A.iso', target: 'CHD', settings: {}, rerun: 'yes' })
+    expect(start).toHaveBeenLastCalledWith(expect.objectContaining({ id: 'job-2', rerun: false }))
+    expect(() => invoke(IPC.runJob, { id: 'not a job id', inputPath: '/in/A.iso', target: 'CHD' })).toThrow('Invalid job id')
+    expect(() => invoke(IPC.runJob, { id: 'job-3', inputPath: 'A.iso', target: 'CHD' })).toThrow('absolute path')
+    expect(start).toHaveBeenCalledTimes(2)
   })
 })

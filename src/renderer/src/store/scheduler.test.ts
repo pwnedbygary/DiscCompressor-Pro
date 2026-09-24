@@ -12,7 +12,7 @@ const env = vi.hoisted(() => {
     focused: true,
     notifications: [] as string[],
     api: {
-      runJob: vi.fn((_request: { id: string }) => Promise.resolve()),
+      runJob: vi.fn((_request: { id: string; rerun?: boolean }) => Promise.resolve()),
       cancelJob: vi.fn((_id: string) => Promise.resolve()),
       setBusy: vi.fn((_busy: boolean) => undefined),
       setTaskbarProgress: vi.fn()
@@ -133,6 +133,15 @@ describe('running the queue', () => {
     handleJobEvents([done('C.iso')])
     await flush()
     expect(messages()).toContain('Queue finished: 2 finished, 1 failed')
+  })
+
+  it('tells the main process which jobs the user asked to run again', () => {
+    setSettings({ maxConcurrentJobs: 2 })
+    removeJobs([idOf('B.iso'), idOf('C.iso')])
+    useQueue.getState().duplicate([idOf('A.iso')])
+    startQueue()
+    expect(api.runJob.mock.calls.map(([request]) => request.rerun)).toEqual([false, true])
+    handleJobEvents(useQueue.getState().order.map((id): JobEvent => ({ type: 'done', jobId: id, outputs: [], outputBytes: 0, skipped: false })))
   })
 
   it('does nothing when no job is queued', () => {

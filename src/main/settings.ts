@@ -9,7 +9,8 @@ export function defaultSettings(): AppSettings {
   return {
     outputMode: 'directory',
     outputDirectory: join(homedir(), 'DiscCompressorPro_Outputs'),
-    overwrite: 'overwrite',
+    // Existing files are never replaced unless the user asks for it (and confirms, see ipc.ts).
+    overwrite: 'skip',
     defaultTarget: 'CHD',
     jobDefaults: { ...DEFAULT_JOB_SETTINGS },
     themeId: SYSTEM_THEME_ID,

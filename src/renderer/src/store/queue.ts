@@ -63,14 +63,15 @@ function freshJob(input: ScannedInput, target: Target, settings: JobSettings): J
     finishedAt: null,
     error: input.problem,
     outputs: [],
-    outputBytes: null
+    outputBytes: null,
+    rerun: false
   }
 }
 
 /** Put a finished job back in the queue, dropping its previous result. */
 function requeued(job: Job): Job {
   if (!isFinished(job.status) || job.input.problem) return job
-  return { ...job, status: 'queued', progress: null, stage: null, startedAt: null, finishedAt: null, error: null, outputs: [], outputBytes: null }
+  return { ...job, status: 'queued', progress: null, stage: null, startedAt: null, finishedAt: null, error: null, outputs: [], outputBytes: null, rerun: true }
 }
 
 /** Apply a new target and settings, requeueing a finished job only if its output would change. */
@@ -148,7 +149,7 @@ export const useQueue = create<QueueState>((set, get) => ({
     const copies = new Map<string, Job>()
     for (const id of ids) {
       const job = jobs[id]
-      if (job) copies.set(id, freshJob(job.input, job.target, job.settings))
+      if (job) copies.set(id, { ...freshJob(job.input, job.target, job.settings), rerun: true })
     }
     const first = order.map((id) => copies.get(id)).find(Boolean)
     if (!first) return

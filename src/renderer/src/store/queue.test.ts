@@ -162,6 +162,24 @@ describe('editing jobs', () => {
     expect(useQueue.getState().jobs[id]).toMatchObject({ status: 'queued', outputs: [] })
   })
 
+  it('marks jobs the user runs again, so that they write a new output instead of being skipped', () => {
+    const q = useQueue.getState()
+    expect(useQueue.getState().jobs[idOf('A.iso')]?.rerun).toBe(false)
+    setStatus(idOf('A.iso'), 'done')
+    q.reset([idOf('A.iso')])
+    setStatus(idOf('B.iso'), 'skipped')
+    q.updateSettings([idOf('B.iso')], { chdCodecsDvd: ['zstd'] })
+    q.duplicate([idOf('C.iso')])
+    const { order, jobs } = useQueue.getState()
+    expect(order.map((id) => `${jobs[id]?.input.name}:${jobs[id]?.status}:${jobs[id]?.rerun}`)).toEqual([
+      'A.iso:queued:true',
+      'B.iso:queued:true',
+      'C.iso:queued:false',
+      'C.iso:queued:true',
+      'D.iso:queued:false'
+    ])
+  })
+
   it('requeues a finished job when its format changes', () => {
     const id = idOf('B.iso')
     setStatus(id, 'failed')
