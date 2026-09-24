@@ -3,6 +3,7 @@ build/
 dist/
 coverage/
 .DS_Store
+__pycache__/
 *.log
 .env*
 !.env.example
