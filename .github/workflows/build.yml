@@ -1,0 +1,150 @@
+name: Build installers
+
+on:
+  push:
+    # Builds on main also keep the tool caches warm for pull requests and tags,
+    # which can only restore caches made on their own ref or the default branch.
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: build-${{ github.ref }}
+  # A newer push to a pull request replaces its build; builds of main and tags always finish.
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  linux:
+    name: Linux AppImage and sources
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+      - name: Check that a release tag matches the app version
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: test "${GITHUB_REF_NAME#v}" = "$(node -p "require('./package.json').version")"
+      - name: Install build dependencies for chdman and maxcso
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends file libsdl2-dev libuv1-dev liblz4-dev zlib1g-dev
+      - run: npm ci
+      - run: npm run check
+      # The tools are rebuilt whenever the script, the compiler or a linked package changes.
+      - name: Describe the toolchain
+        id: toolchain
+        run: |
+          gcc_major=$(gcc -dumpversion | cut -d. -f1)
+          id=$({ gcc --version | head -n 1; dpkg-query -W -f '${Package} ${Version}\n' libc6-dev "libstdc++-$gcc_major-dev" "libgcc-$gcc_major-dev" libuv1-dev liblz4-dev zlib1g-dev; } | sha256sum | cut -c1-16)
+          echo "id=$id" >> "$GITHUB_OUTPUT"
+      # Restored after `npm ci`, which deletes node_modules. Only downloads and finished binaries are kept.
+      - uses: actions/cache@v6
+        with:
+          path: |
+            node_modules/.cache/dcp-tools/*.tar.gz
+            node_modules/.cache/dcp-tools/built
+            node_modules/.cache/dcp-tools/sources
+          key: linux-tools-${{ hashFiles('scripts/build-linux-tools.sh') }}-${{ steps.toolchain.outputs.id }}
+          restore-keys: linux-tools-
+      - name: Build static chdman and maxcso
+        run: npm run tools:linux
+      - name: Test the bundled tools end to end
+        run: npm run test:integration
+        env:
+          DCP_CHDMAN: resources/bin/linux-x64/chdman
+          DCP_MAXCSO: resources/bin/linux-x64/maxcso
+      - run: npm run dist:linux
+      - name: Collect the sources of the (L)GPL components
+        run: npm run sources
+      - uses: actions/upload-artifact@v7
+        with:
+          name: linux
+          path: |
+            release/*.AppImage
+            release/*-sources.tar
+          if-no-files-found: error
+          retention-days: ${{ github.event_name == 'pull_request' && 7 || 30 }}
+
+  windows:
+    name: Windows installer and portable EXE
+    runs-on: windows-2025
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+      - name: Check that a release tag matches the app version
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: bash
+        run: test "${GITHUB_REF_NAME#v}" = "$(node -p "require('./package.json').version")"
+      - run: npm ci
+      - run: npm run check
+      - uses: actions/cache@v6
+        with:
+          path: node_modules/.cache/dcp-tools
+          key: windows-tools-${{ hashFiles('scripts/fetch-windows-tools.mjs', 'package-lock.json') }}
+      - run: npm run dist:win
+      - name: Check the bundled tools run
+        shell: pwsh
+        run: |
+          $bin = 'release/win-unpacked/resources/bin'
+          $chdman = (& "$bin/chdman.exe" 2>&1 | Select-Object -First 1) -join ''
+          $maxcso = (& "$bin/maxcso.exe" --version 2>&1 | Select-Object -First 1) -join ''
+          Write-Output $chdman $maxcso
+          if ($chdman -notmatch 'manager 0\.289' -or $maxcso -notmatch 'maxcso v1\.13\.0') { exit 1 }
+          exit 0
+      # The report, not the exit code, is what counts: bytesRead is null if koffi cannot be loaded.
+      - name: Check that the packaged app can measure maxcso's progress (koffi)
+        shell: pwsh
+        run: |
+          $result = Join-Path $env:RUNNER_TEMP 'self-test.json'
+          $app = Start-Process -FilePath 'release/win-unpacked/DiscCompressor Pro.exe' -ArgumentList "--self-test=$result" -PassThru
+          $null = $app.Handle
+          if (-not $app.WaitForExit(120000)) { $app.Kill(); throw 'The app did not exit' }
+          Write-Output "Exit code $($app.ExitCode)"
+          if (-not (Test-Path $result)) { throw 'The app wrote no self-test report' }
+          Get-Content $result
+          $report = Get-Content $result | ConvertFrom-Json
+          if ($null -eq $report.bytesRead -or $report.bytesRead -le 0) { exit 1 }
+      - name: Test the bundled tools end to end
+        run: npm run test:integration
+        env:
+          DCP_CHDMAN: resources/bin/win-x64/chdman.exe
+          DCP_MAXCSO: resources/bin/win-x64/maxcso.exe
+      - uses: actions/upload-artifact@v7
+        with:
+          name: windows
+          path: release/*.exe
+          if-no-files-found: error
+          retention-days: ${{ github.event_name == 'pull_request' && 7 || 30 }}
+
+  release:
+    name: Publish release
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [linux, windows]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          path: dist
+          merge-multiple: true
+      - name: Write checksums
+        working-directory: dist
+        run: sha256sum -- * > SHA256SUMS.txt
+      # Published as a draft, to be reviewed and released by hand.
+      - uses: softprops/action-gh-release@v3
+        with:
+          files: dist/*
+          draft: true
+          generate_release_notes: true
+          fail_on_unmatched_files: true
