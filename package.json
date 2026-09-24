@@ -22,9 +22,11 @@
     "check": "npm run typecheck && npm run lint && npm run test",
     "tools:win": "node scripts/fetch-windows-tools.mjs",
     "tools:linux": "bash scripts/build-linux-tools.sh",
+    "notices": "node scripts/generate-notices.mjs",
     "dist": "npm run build && electron-builder",
     "dist:win": "npm run build && electron-builder --win",
     "dist:linux": "npm run build && electron-builder --linux",
+    "sources": "node scripts/collect-sources.mjs",
     "clean": "node -e \"for (const d of ['out','release']) require('node:fs').rmSync(d, { recursive: true, force: true })\""
   },
   "dependencies": {
