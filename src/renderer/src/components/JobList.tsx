@@ -1,4 +1,4 @@
-import { useVirtualizer } from '@tanstack/react-virtual'
+import { type Range, defaultRangeExtractor, useVirtualizer } from '@tanstack/react-virtual'
 import { type DragEvent, type KeyboardEvent, type MouseEvent, useCallback, useEffect, useRef, useState } from 'react'
 import { selectedInOrder, useQueue } from '../store/queue'
 import { EmptyState } from './EmptyState'
@@ -26,6 +26,15 @@ export function JobList() {
   const scroller = useRef<HTMLDivElement>(null)
   const [dropIndex, setDropIndex] = useState<number | null>(null)
   const [band, setBand] = useState<Band | null>(null)
+  const focusIndex = focus ? order.indexOf(focus) : -1
+  // The listbox names the focused row as its active descendant, so that row stays rendered even when scrolled away.
+  const rangeExtractor = useCallback(
+    (range: Range) => {
+      const indexes = defaultRangeExtractor(range)
+      return focusIndex < 0 || indexes.includes(focusIndex) ? indexes : [...indexes, focusIndex].sort((a, b) => a - b)
+    },
+    [focusIndex]
+  )
 
   // Only the rows in view are rendered; every row has the same height.
   const virtualizer = useVirtualizer({
@@ -37,10 +46,11 @@ export function JobList() {
     scrollPaddingStart: PADDING,
     scrollPaddingEnd: PADDING,
     overscan: 6,
-    getItemKey: (index) => order[index] ?? index
+    getItemKey: (index) => order[index] ?? index,
+    rangeExtractor
   })
 
-  // Keep the keyboard focus in view (and rendered, since the listbox points at it).
+  // Keep the keyboard focus in view.
   useEffect(() => {
     const index = focus ? useQueue.getState().order.indexOf(focus) : -1
     if (index >= 0) virtualizer.scrollToIndex(index, { align: 'auto' })

@@ -109,15 +109,25 @@ export function LogPanel() {
     if (atBottom !== follow) setFollow(atBottom)
   }
 
-  const clampHeight = (value: number): number => Math.min(Math.max(value, MIN_HEIGHT), window.innerHeight - 260)
+  const [viewportHeight, setViewportHeight] = useState(window.innerHeight)
+  useEffect(() => {
+    const onResize = (): void => setViewportHeight(window.innerHeight)
+    window.addEventListener('resize', onResize)
+    return () => window.removeEventListener('resize', onResize)
+  }, [])
+
+  // The console always leaves 260 px for the rest of the window; the stored height is kept for a larger window.
+  const maxHeight = Math.max(MIN_HEIGHT, viewportHeight - 260)
+  const clampHeight = (value: number): number => Math.round(Math.min(Math.max(value, MIN_HEIGHT), maxHeight))
+  const height = clampHeight(dragHeight ?? logHeight)
 
   // The height is only stored (and persisted) when the drag ends.
   const startResize = (event: ReactMouseEvent): void => {
     event.preventDefault()
     const startY = event.clientY
-    let latest = logHeight
+    let latest = height
     const move = (e: MouseEvent): void => {
-      latest = clampHeight(logHeight + startY - e.clientY)
+      latest = clampHeight(height + startY - e.clientY)
       setDragHeight(latest)
     }
     const up = (): void => {
@@ -136,7 +146,7 @@ export function LogPanel() {
     const step = event.key === 'ArrowUp' ? 24 : event.key === 'ArrowDown' ? -24 : 0
     if (step === 0) return
     event.preventDefault()
-    setLogHeight(clampHeight(logHeight + step))
+    setLogHeight(clampHeight(height + step))
   }
 
   const copyAll = async (): Promise<void> => {
@@ -162,17 +172,16 @@ export function LogPanel() {
   }
 
   return (
-    <section
-      className="relative flex shrink-0 flex-col border-t border-line bg-surface"
-      style={{ height: dragHeight ?? logHeight, minHeight: MIN_HEIGHT, maxHeight: 'calc(100vh - 260px)' }}
-    >
+    <section className="relative flex shrink-0 flex-col border-t border-line bg-surface" style={{ height }}>
       <div
         role="separator"
         tabIndex={0}
         aria-orientation="horizontal"
         aria-label="Resize console"
         aria-valuemin={MIN_HEIGHT}
-        aria-valuenow={Math.round(dragHeight ?? logHeight)}
+        aria-valuemax={maxHeight}
+        aria-valuenow={height}
+        aria-valuetext={`${height} pixels`}
         onMouseDown={startResize}
         onKeyDown={resizeWithKeys}
         className="absolute inset-x-0 -top-1 z-10 h-2 cursor-row-resize outline-offset-0 hover:bg-accent/30 focus-visible:bg-accent/30"
