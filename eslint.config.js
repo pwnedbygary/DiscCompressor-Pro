@@ -37,6 +37,11 @@ export default defineConfig([
     languageOptions: { globals: globals.node }
   },
   {
+    // Build scripts report their progress on the console.
+    files: ['scripts/**/*.{js,mjs}'],
+    rules: { 'no-console': 'off' }
+  },
+  {
     files: ['**/*.js', '**/*.mjs'],
     extends: [tseslint.configs.disableTypeChecked]
   }
