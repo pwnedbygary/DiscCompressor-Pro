@@ -4,6 +4,8 @@ import { blend, contrast, ensureContrast, readableOn } from './color'
 const TEXT_CONTRAST = 4.5
 /** The strongest tint text is drawn on: selected rows, badges and pressed buttons use 8–15%. */
 const TINT = 0.15
+/** The strongest hover overlay (--c-hover in index.css): the text colour at 7%. */
+const HOVER = 0.07
 
 let darkQuery: MediaQueryList | null = null
 
@@ -16,11 +18,15 @@ export function prefersDark(): boolean {
   return prefersDarkQuery().matches
 }
 
-/** The backgrounds text can appear on: the plain surfaces and each surface with `tints` drawn over it. */
+/**
+ * The backgrounds text can appear on: the plain surfaces, the surfaces under
+ * the hover overlay, and each surface with `tints` drawn over it.
+ */
 export function textBackgrounds(theme: Theme, tints: string[] = []): string[] {
   const { colors } = theme
   const surfaces = [colors.bg, colors.surface, colors.elevated]
-  return [...surfaces, ...[colors.accent, ...tints].flatMap((tint) => surfaces.map((surface) => blend(tint, surface, TINT)))]
+  const hovered = surfaces.map((surface) => blend(colors.text, surface, HOVER))
+  return [...surfaces, ...hovered, ...[colors.accent, ...tints].flatMap((tint) => surfaces.map((surface) => blend(tint, surface, TINT)))]
 }
 
 /**
@@ -45,6 +51,8 @@ export function themeVariables(theme: Theme): Record<string, string> {
     '--c-fg': ink(colors.text),
     '--c-muted': ink(colors.muted),
     '--c-accent-ink': ink(colors.accent),
+    // Opaque, so that a hovered row cannot lower the contrast of the text drawn on it.
+    '--c-highlight': blend(colors.accent, colors.surface, TINT),
     '--c-success-ink': ink(colors.success, true),
     '--c-danger-ink': ink(colors.danger, true),
     '--c-warning-ink': ink(colors.warning, true),

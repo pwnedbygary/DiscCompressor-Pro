@@ -53,8 +53,9 @@ function highlight(text: string, query: string): ReactNode {
   let index = lower.indexOf(query)
   while (index >= 0) {
     if (index > from) parts.push(text.slice(from, index))
+    // The highlight is the tint every text colour is checked against (lib/theme.ts); the underline marks the match.
     parts.push(
-      <mark key={index} className="rounded-sm bg-accent/35 text-inherit">
+      <mark key={index} className="rounded-sm bg-highlight text-inherit underline decoration-accent-ink decoration-2 underline-offset-2">
         {text.slice(index, index + query.length)}
       </mark>
     )

@@ -7,6 +7,8 @@ export default defineConfig({
   },
   test: {
     include: ['src/**/*.test.ts'],
-    environment: 'node'
+    environment: 'node',
+    // Lets tests read the stylesheet as text (`?raw`); other CSS imports stay empty.
+    css: { include: [/styles\/index\.css/] }
   }
 })

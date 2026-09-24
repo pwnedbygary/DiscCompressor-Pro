@@ -28,6 +28,7 @@
   --color-info-ink: var(--c-info-ink);
   --color-success-fg: var(--c-success-fg);
   --color-danger-fg: var(--c-danger-fg);
+  --color-highlight: var(--c-highlight);
 
   --text-2xs: 0.6875rem;
   --text-2xs--line-height: 1rem;
@@ -67,26 +68,27 @@
 }
 
 :root {
-  /* Theme colours are written to these variables at runtime (see lib/theme.ts). */
+  /* Theme colours are written to these variables at runtime (see lib/theme.ts); these are Adwaita's, for the first paint. */
   --c-bg: #f6f5f4;
   --c-surface: #ebebeb;
   --c-elevated: #ffffff;
   --c-fg: #2e3436;
-  --c-muted: #77767b;
+  --c-muted: #5f5e62;
   --c-accent: #3584e4;
-  --c-accent-fg: #ffffff;
+  --c-accent-fg: #000000;
   --c-line: #dcdcdc;
   --c-success: #26a269;
   --c-danger: #e01b24;
   --c-warning: #c88800;
   --c-info: #1c71d8;
-  --c-accent-ink: #1b6acb;
-  --c-success-ink: #1a7a4f;
-  --c-danger-ink: #c7161f;
-  --c-warning-ink: #8a5e00;
-  --c-info-ink: #1c71d8;
+  --c-accent-ink: #255ca0;
+  --c-success-ink: #196944;
+  --c-danger-ink: #b3161d;
+  --c-warning-ink: #825800;
+  --c-info-ink: #165aad;
   --c-success-fg: #000000;
   --c-danger-fg: #ffffff;
+  --c-highlight: #d0dcea;
   --c-hover: color-mix(in oklab, var(--c-fg) 7%, transparent);
   --c-subtle: color-mix(in oklab, var(--c-fg) 4%, transparent);
   --c-line-strong: color-mix(in oklab, var(--c-fg) 20%, transparent);
