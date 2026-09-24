@@ -145,6 +145,7 @@ describeUnix('JobRunner', () => {
       skipped: false,
       outputs: [join(outputDir, 'Game (1).chd')]
     })
+    expect(logs(h)).toContain('Skipped Game.iso: Game.chd already exists; run the job again to write a numbered copy')
   })
 
   it('never overwrites the input, even with the overwrite policy', async () => {
