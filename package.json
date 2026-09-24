@@ -1,11 +1,13 @@
 {
   "name": "disccompressor-pro",
-  "version": "2.0.0",
+  "version": "2.1.0",
   "description": "Convert disc images between BIN/CUE, GDI, ISO, CHD, CSO and ZSO",
   "author": "DiscCompressor",
+  "homepage": "https://github.com/pwnedbygary/DiscCompressor-Pro",
   "private": true,
   "type": "module",
   "main": "./out/main/index.js",
+  "desktopName": "disccompressor-pro.desktop",
   "engines": {
     "node": ">=22.12.0"
   },
@@ -23,9 +25,8 @@
     "tools:win": "node scripts/fetch-windows-tools.mjs",
     "tools:linux": "bash scripts/build-linux-tools.sh",
     "notices": "node scripts/generate-notices.mjs",
-    "dist": "npm run build && electron-builder",
-    "dist:win": "npm run build && electron-builder --win",
-    "dist:linux": "npm run build && electron-builder --linux",
+    "dist:win": "npm run build && npm run tools:win && npm run notices && electron-builder --win && node scripts/verify-installer-plugins.mjs",
+    "dist:linux": "npm run build && npm run tools:linux && npm run notices && node scripts/appimage-tools.mjs electron-builder --linux",
     "sources": "node scripts/collect-sources.mjs",
     "clean": "node -e \"for (const d of ['out','release']) require('node:fs').rmSync(d, { recursive: true, force: true })\""
   },

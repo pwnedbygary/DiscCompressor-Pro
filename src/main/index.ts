@@ -1,4 +1,5 @@
 import { existsSync, statSync } from 'node:fs'
+import { writeFile } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
 import {
   type BrowserWindow,
@@ -13,6 +14,7 @@ import {
 import { IPC } from '@shared/api'
 import type { AppCommand } from '@shared/types'
 import { type IpcBridge, registerIpc } from './ipc'
+import { processBytesRead } from './jobs/ioCounters'
 import { JobRunner } from './jobs/runner'
 import { WorkDirJournal } from './jobs/workDirs'
 import { registerAppScheme, serveRenderer } from './protocol'
@@ -29,7 +31,24 @@ if (process.platform === 'win32') app.setAppUserModelId('com.disccompressor.pro'
 
 registerAppScheme()
 
-if (!app.requestSingleInstanceLock()) {
+/**
+ * `--self-test=<file>`, used by the release build: check that the packaged app
+ * can measure how much a process has read, which maxcso's progress relies on
+ * (koffi on Windows), write the result to <file> as JSON and exit.
+ */
+async function selfTest(file: string): Promise<void> {
+  const bytesRead = await processBytesRead(process.pid)
+  await writeFile(file, `${JSON.stringify({ platform: process.platform, arch: process.arch, bytesRead })}\n`)
+  app.exit(bytesRead === null ? 1 : 0)
+}
+
+const selfTestFile = process.argv.find((arg) => arg.startsWith('--self-test='))?.slice('--self-test='.length)
+if (selfTestFile) {
+  selfTest(selfTestFile).catch((error: unknown) => {
+    console.error('Self-test failed', error)
+    app.exit(1)
+  })
+} else if (!app.requestSingleInstanceLock()) {
   app.quit()
 } else {
   void main()
