@@ -69,6 +69,8 @@ async function main(): Promise<void> {
   let rendererBusy = false
   let sleepBlocker: number | null = null
   let lastRendererCrash = 0
+  /** Tells the user why the window was reloaded, once the reloaded page has loaded. */
+  let reloadNotice: (() => void) | null = null
 
   /** Keep the system awake while the queue runs or any job is still working. */
   const updateSleepBlocker = (): void => {
@@ -213,32 +215,58 @@ async function main(): Promise<void> {
   })
   window.webContents.on('did-start-loading', () => {
     rendererReady = false
+    ipc?.resetRenderer()
   })
   window.webContents.on('render-process-gone', (_event, details) => {
     console.error(`The window's renderer process exited (${details.reason}).`)
+    // A page that died while reloading never got to show the notice meant for it.
+    if (reloadNotice) window?.webContents.removeListener('did-finish-load', reloadNotice)
+    reloadNotice = null
+    // Paths from a second instance wait for the reloaded page instead of going to the dead one.
+    rendererReady = false
     rendererBusy = false
     updateSleepBlocker()
+    // Only the page updates the taskbar, so it would otherwise keep showing the old progress.
+    window?.setProgressBar(-1)
+    ipc?.resetRenderer()
     if (details.reason === 'clean-exit') return
     // The queue lived in the page, so a reloaded page could neither show nor cancel the jobs it started.
     const cancelled = runner.activeCount
+    const detail =
+      cancelled > 0
+        ? `${cancelled === 1 ? 'The running job was' : `${cancelled} running jobs were`} cancelled and ${cancelled === 1 ? 'its' : 'their'} unfinished output removed. Add the images again to convert them.`
+        : 'No jobs were running.'
     const now = Date.now()
-    // Reload once; a renderer that keeps crashing is left alone rather than restarted in a loop.
-    const reload = now - lastRendererCrash > 30_000
+    // A page that crashes again right away is not reloaded automatically, which could loop.
+    const reloadNow = now - lastRendererCrash > 30_000
     lastRendererCrash = now
-    void runner.cancelAll().then(() => {
-      if (!window || window.isDestroyed() || !reload) return
+    void runner.cancelAll().then(async () => {
+      if (!window || window.isDestroyed()) return
       const current = window
-      current.webContents.once('did-finish-load', () => {
-        void dialog.showMessageBox(current, {
-          type: 'warning',
+      // The cancelled jobs' last events were meant for the page that is gone.
+      ipc?.resetRenderer()
+      if (reloadNow) {
+        reloadNotice = () => {
+          reloadNotice = null
+          void dialog.showMessageBox(current, { type: 'warning', title: 'DiscCompressor Pro', message: 'The window stopped working and was reloaded.', detail })
+        }
+        current.webContents.once('did-finish-load', reloadNotice)
+      } else {
+        const { response } = await dialog.showMessageBox(current, {
+          type: 'error',
+          buttons: ['Reload', 'Quit'],
+          defaultId: 0,
+          cancelId: 1,
           title: 'DiscCompressor Pro',
-          message: 'The window stopped working and was reloaded.',
-          detail:
-            cancelled > 0
-              ? `${cancelled === 1 ? 'The running job was' : `${cancelled} running jobs were`} cancelled and ${cancelled === 1 ? 'its' : 'their'} unfinished output removed. Add the images again to convert them.`
-              : 'No jobs were running.'
+          message: 'The window stopped working again.',
+          detail
         })
-      })
+        if (current.isDestroyed()) return
+        if (response !== 0) {
+          app.quit()
+          return
+        }
+      }
       current.webContents.reload()
     })
   })
