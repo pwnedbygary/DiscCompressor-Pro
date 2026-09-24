@@ -1,6 +1,6 @@
-import { readFile, stat, writeFile } from 'node:fs/promises'
+import { readFile, realpath, stat, writeFile } from 'node:fs/promises'
 import { availableParallelism, homedir } from 'node:os'
-import { basename, isAbsolute } from 'node:path'
+import { basename, extname, isAbsolute } from 'node:path'
 import {
   type BrowserWindow,
   type IpcMainEvent,
@@ -284,6 +284,15 @@ export function registerIpc(deps: IpcDependencies): IpcBridge {
       throw error
     }
     if (!info.isDirectory()) throw new Error(`${dir} is not a folder`)
+    // macOS opens a bundle (a folder such as Tool.app) by launching it, so such folders, also when reached
+    // through a symbolic link, are only shown in Finder.
+    if (process.platform === 'darwin') {
+      const real = await realpath(dir)
+      if (extname(real) !== '') {
+        shell.showItemInFolder(real)
+        return true
+      }
+    }
     const error = await shell.openPath(dir)
     if (error) throw new Error(error)
     return true

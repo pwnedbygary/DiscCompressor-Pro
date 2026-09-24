@@ -1,3 +1,6 @@
+import { mkdir, mkdtemp, rm, symlink } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import type { BrowserWindow } from 'electron'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { IPC } from '@shared/api'
@@ -144,5 +147,27 @@ describe('starting jobs', () => {
     expect(() => invoke(IPC.runJob, { id: 'not a job id', inputPath: '/in/A.iso', target: 'CHD' })).toThrow('Invalid job id')
     expect(() => invoke(IPC.runJob, { id: 'job-3', inputPath: 'A.iso', target: 'CHD' })).toThrow('absolute path')
     expect(start).toHaveBeenCalledTimes(2)
+  })
+})
+
+describe('opening the output folder', () => {
+  it('on macOS only shows a folder that is really a bundle, also when reached through a symbolic link', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'dcp-ipc-'))
+    const bundle = join(root, 'Tool.app')
+    await mkdir(bundle)
+    await symlink(bundle, join(root, 'Tool'))
+    const platform = Object.getOwnPropertyDescriptor(process, 'platform') as PropertyDescriptor
+    Object.defineProperty(process, 'platform', { value: 'darwin' })
+    try {
+      expect(await connect({ settings: { outputDirectory: join(root, 'Tool') } }).invoke(IPC.openOutputFolder)).toBe(true)
+      expect(electron.shell.showItemInFolder).toHaveBeenCalledWith(bundle)
+      expect(electron.shell.openPath).not.toHaveBeenCalled()
+
+      expect(await connect({ settings: { outputDirectory: root } }).invoke(IPC.openOutputFolder)).toBe(true)
+      expect(electron.shell.openPath).toHaveBeenCalledWith(root)
+    } finally {
+      Object.defineProperty(process, 'platform', platform)
+      await rm(root, { recursive: true, force: true })
+    }
   })
 })
