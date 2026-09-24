@@ -1,0 +1,39 @@
+# electron-builder configuration: https://www.electron.build/docs/configuration
+appId: com.disccompressor.pro
+productName: DiscCompressor Pro
+copyright: Copyright © DiscCompressor
+
+directories:
+  buildResources: build
+  output: release
+
+# The app has no auto-updater, so no update metadata is generated.
+publish: null
+
+files:
+  - out/**
+  - package.json
+
+extraResources:
+  - from: resources/icons
+    to: icons
+
+win:
+  target: nsis
+  icon: build/icon.ico
+
+nsis:
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+
+linux:
+  target: AppImage
+  icon: build/icon.png
+  category: Utility
+  synopsis: Disc image converter for CHD, CSO and ZSO
+
+toolsets:
+  # The static AppImage runtime runs without libfuse2, which Ubuntu 22.04+ and
+  # other current distributions no longer install by default.
+  appimage: "1.0.3"
