@@ -145,6 +145,12 @@ describeUnix('JobRunner', () => {
       skipped: false,
       outputs: [join(outputDir, 'Game (1).chd')]
     })
+    expect(logs(h)).toContain('Skipped Game.iso: Game.chd already exists; run the job again to write a numbered copy')
+
+    // Other policies are not changed by a re-run.
+    const replace = harness({ overwrite: 'overwrite' })
+    expect(await replace.run({ id: 'replace', inputPath: iso, target: 'CHD', rerun: true })).toMatchObject({ outputs: [join(outputDir, 'Game.chd')] })
+    expect((await readdir(outputDir)).sort()).toEqual(['Game (1).chd', 'Game.chd'])
   })
 
   it('never overwrites the input, even with the overwrite policy', async () => {

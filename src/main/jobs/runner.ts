@@ -256,7 +256,7 @@ export class JobRunner {
         if (ext === '.cue' || ext === '.gdi') baseName = baseName.replaceAll('"', "'")
         const claimed = await this.claimOutputs(job, outputDir, baseName, policy, (base) => this.plan(input, request.target, settings, base))
         if ('skip' in claimed) {
-          log('warn', `Skipped ${input.name}: ${basename(claimed.skip)} already exists`)
+          log('warn', `Skipped ${input.name}: ${basename(claimed.skip)} already exists; run the job again to write a numbered copy`)
           return { type: 'done', jobId: request.id, outputs: [claimed.skip], outputBytes: await sizeOf(claimed.skip), skipped: true }
         }
         plan = claimed.plan
