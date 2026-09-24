@@ -29,6 +29,18 @@ const maxcso = process.env.DCP_MAXCSO ?? onPath('maxcso')
 const requested = process.env.DCP_INTEGRATION === '1' || process.env.npm_lifecycle_event === 'test:integration'
 const enabled = requested && !!chdman && !!maxcso
 
+/** Wine does not count process I/O, so maxcso's progress can only be measured on Linux and real Windows. */
+function measuresProgress(): boolean {
+  if (process.platform === 'linux') return true
+  if (process.platform !== 'win32') return false
+  try {
+    execFileSync('reg', ['query', 'HKLM\\Software\\Wine'], { stdio: 'ignore' })
+    return false
+  } catch {
+    return true
+  }
+}
+
 const SYNC = Buffer.from([0x00, ...Array<number>(10).fill(0xff), 0x00])
 const bcd = (value: number): number => ((Math.floor(value / 10) << 4) | value % 10) & 0xff
 
@@ -141,7 +153,7 @@ describe.skipIf(!enabled)('real chdman and maxcso', () => {
       const { final, events } = await run(join(inputs, 'Game.iso'), target, settings)
       expect(final.type).toBe('done')
       // Only the slow Zopfli run lasts long enough for the 500 ms progress sampling.
-      if (process.platform === 'linux' && settings.csoMode === 'max') {
+      if (settings.csoMode === 'max' && measuresProgress()) {
         const measured = events.flatMap((e) => (e.type === 'progress' && e.progress !== null && e.progress < 1 ? [e.progress] : []))
         expect(Math.max(...measured)).toBeGreaterThan(0.2)
       }
