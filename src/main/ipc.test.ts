@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, rm, symlink } from 'node:fs/promises'
+import { mkdir, mkdtemp, realpath, rm, symlink } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { BrowserWindow } from 'electron'
@@ -153,9 +153,11 @@ describe('starting jobs', () => {
 describe('opening the output folder', () => {
   it('on macOS only shows a folder that is really a bundle, also when reached through a symbolic link', async () => {
     const root = await mkdtemp(join(tmpdir(), 'dcp-ipc-'))
-    const bundle = join(root, 'Tool.app')
-    await mkdir(bundle)
-    await symlink(bundle, join(root, 'Tool'))
+    await mkdir(join(root, 'Tool.app'))
+    // A junction needs no special rights on Windows; elsewhere the type is ignored.
+    await symlink(join(root, 'Tool.app'), join(root, 'Tool'), 'junction')
+    // The canonical path, which on Windows may differ from a short (8.3) temp path.
+    const bundle = await realpath(join(root, 'Tool.app'))
     const platform = Object.getOwnPropertyDescriptor(process, 'platform') as PropertyDescriptor
     Object.defineProperty(process, 'platform', { value: 'darwin' })
     try {
