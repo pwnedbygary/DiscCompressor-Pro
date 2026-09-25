@@ -1,0 +1,228 @@
+@import 'tailwindcss';
+@import '@fontsource-variable/inter';
+
+@theme {
+  --font-sans: 'Inter Variable', ui-sans-serif, system-ui, 'Segoe UI', Cantarell, 'Noto Sans', sans-serif;
+  --font-mono: ui-monospace, 'Cascadia Mono', 'SF Mono', 'JetBrains Mono', Menlo, Consolas, 'DejaVu Sans Mono', monospace;
+
+  --color-bg: var(--c-bg);
+  --color-surface: var(--c-surface);
+  --color-elevated: var(--c-elevated);
+  --color-fg: var(--c-fg);
+  --color-muted: var(--c-muted);
+  --color-accent: var(--c-accent);
+  --color-accent-fg: var(--c-accent-fg);
+  --color-line: var(--c-line);
+  --color-line-strong: var(--c-line-strong);
+  --color-hover: var(--c-hover);
+  --color-subtle: var(--c-subtle);
+  --color-success: var(--c-success);
+  --color-danger: var(--c-danger);
+  --color-warning: var(--c-warning);
+  --color-info: var(--c-info);
+  /* Text versions of the palette colours, adjusted for contrast (lib/theme.ts). */
+  --color-accent-ink: var(--c-accent-ink);
+  --color-success-ink: var(--c-success-ink);
+  --color-danger-ink: var(--c-danger-ink);
+  --color-warning-ink: var(--c-warning-ink);
+  --color-info-ink: var(--c-info-ink);
+  --color-success-fg: var(--c-success-fg);
+  --color-danger-fg: var(--c-danger-fg);
+  --color-highlight: var(--c-highlight);
+
+  --text-2xs: 0.6875rem;
+  --text-2xs--line-height: 1rem;
+
+  --animate-shimmer: shimmer 1.6s linear infinite;
+  --animate-indeterminate: indeterminate 1.4s ease-in-out infinite;
+  --animate-toast-in: toast-in 180ms ease-out;
+
+  @keyframes shimmer {
+    from {
+      background-position: 200% 0;
+    }
+    to {
+      background-position: -200% 0;
+    }
+  }
+
+  @keyframes indeterminate {
+    0% {
+      transform: translateX(-100%);
+    }
+    100% {
+      transform: translateX(250%);
+    }
+  }
+
+  @keyframes toast-in {
+    from {
+      opacity: 0;
+      transform: translateY(8px) scale(0.98);
+    }
+    to {
+      opacity: 1;
+      transform: none;
+    }
+  }
+}
+
+:root {
+  /* Theme colours are written to these variables at runtime (see lib/theme.ts); these are Adwaita's, for the first paint. */
+  --c-bg: #f6f5f4;
+  --c-surface: #ebebeb;
+  --c-elevated: #ffffff;
+  --c-fg: #2e3436;
+  --c-muted: #5f5e62;
+  --c-accent: #3584e4;
+  --c-accent-fg: #000000;
+  --c-line: #dcdcdc;
+  --c-success: #26a269;
+  --c-danger: #e01b24;
+  --c-warning: #c88800;
+  --c-info: #1c71d8;
+  --c-accent-ink: #255ca0;
+  --c-success-ink: #196944;
+  --c-danger-ink: #b3161d;
+  --c-warning-ink: #825800;
+  --c-info-ink: #165aad;
+  --c-success-fg: #000000;
+  --c-danger-fg: #ffffff;
+  --c-highlight: #d0dcea;
+  --c-hover: color-mix(in oklab, var(--c-fg) 7%, transparent);
+  --c-subtle: color-mix(in oklab, var(--c-fg) 4%, transparent);
+  --c-line-strong: color-mix(in oklab, var(--c-fg) 20%, transparent);
+}
+
+@layer base {
+  html,
+  body,
+  #root {
+    height: 100%;
+  }
+
+  body {
+    @apply bg-bg font-sans text-fg antialiased;
+    font-size: 13px;
+    line-height: 1.45;
+    cursor: default;
+    user-select: none;
+    overflow: hidden;
+    font-feature-settings: 'cv11', 'ss01';
+  }
+
+  input,
+  textarea,
+  [data-selectable] {
+    user-select: text;
+  }
+
+  button {
+    cursor: default;
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--c-accent);
+    outline-offset: 2px;
+  }
+
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: var(--c-line-strong) transparent;
+  }
+
+  ::selection {
+    background: color-mix(in oklab, var(--c-accent) 35%, transparent);
+  }
+
+  dialog {
+    @apply m-auto border-0 bg-transparent p-0 text-fg;
+    max-width: none;
+    max-height: none;
+    opacity: 0;
+    transform: translateY(6px) scale(0.985);
+    transition:
+      opacity 160ms ease,
+      transform 160ms ease,
+      overlay 160ms allow-discrete,
+      display 160ms allow-discrete;
+  }
+
+  dialog[open] {
+    opacity: 1;
+    transform: none;
+  }
+
+  @starting-style {
+    dialog[open] {
+      opacity: 0;
+      transform: translateY(6px) scale(0.985);
+    }
+  }
+
+  dialog::backdrop {
+    background: rgb(0 0 0 / 0);
+    backdrop-filter: blur(0);
+    transition:
+      background 160ms ease,
+      backdrop-filter 160ms ease,
+      overlay 160ms allow-discrete,
+      display 160ms allow-discrete;
+  }
+
+  dialog[open]::backdrop {
+    background: rgb(0 0 0 / 0.42);
+    backdrop-filter: blur(3px);
+  }
+
+  @starting-style {
+    dialog[open]::backdrop {
+      background: rgb(0 0 0 / 0);
+      backdrop-filter: blur(0);
+    }
+  }
+
+  [popover] {
+    @apply m-0 border-0 bg-transparent p-0 text-fg;
+    opacity: 0;
+    transform: translateY(-4px);
+    transition:
+      opacity 120ms ease,
+      transform 120ms ease,
+      overlay 120ms allow-discrete,
+      display 120ms allow-discrete;
+  }
+
+  [popover]:popover-open {
+    opacity: 1;
+    transform: none;
+  }
+
+  @starting-style {
+    [popover]:popover-open {
+      opacity: 0;
+      transform: translateY(-4px);
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      transition-duration: 0.01ms !important;
+    }
+  }
+}
+
+@layer components {
+  .progress-stripes {
+    background-image: linear-gradient(
+      90deg,
+      transparent 0%,
+      color-mix(in oklab, white 28%, transparent) 50%,
+      transparent 100%
+    );
+    background-size: 200% 100%;
+  }
+}
