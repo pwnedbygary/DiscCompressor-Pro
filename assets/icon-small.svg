@@ -1,0 +1,40 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024">
+  <defs>
+    <linearGradient id="tile" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#1d2847"/>
+      <stop offset="1" stop-color="#0c1224"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0" stop-color="#3584e4" stop-opacity="0.22"/>
+      <stop offset="1" stop-color="#3584e4" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="disc" x1="0.15" y1="0.1" x2="0.85" y2="0.9">
+      <stop offset="0" stop-color="#f4f7fc"/>
+      <stop offset="0.55" stop-color="#cdd7e6"/>
+      <stop offset="1" stop-color="#9fb0c9"/>
+    </linearGradient>
+    <linearGradient id="data" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#62a0ea"/>
+      <stop offset="1" stop-color="#3584e4"/>
+    </linearGradient>
+    <clipPath id="disc-half"><rect width="512" height="1024"/></clipPath>
+    <clipPath id="data-half"><circle cx="512" cy="512" r="236"/></clipPath>
+  </defs>
+  <rect x="20" y="20" width="984" height="984" rx="210" fill="url(#tile)"/>
+  <circle cx="512" cy="512" r="420" fill="url(#glow)"/>
+  <rect x="22" y="22" width="980" height="980" rx="208" fill="none" stroke="#ffffff" stroke-opacity="0.08" stroke-width="4"/>
+  <g transform="translate(512 512) scale(1.16) translate(-512 -512)">
+    <g clip-path="url(#disc-half)">
+      <circle cx="512" cy="512" r="282" fill="url(#disc)"/>
+    </g>
+    <g clip-path="url(#data-half)" fill="url(#data)">
+      <rect x="526" y="276.0" width="340" height="70.4"/>
+      <rect x="526" y="376.4" width="340" height="70.4"/>
+      <rect x="526" y="476.8" width="340" height="70.4"/>
+      <rect x="526" y="577.2" width="340" height="70.4"/>
+      <rect x="526" y="677.6" width="340" height="70.4"/>
+    </g>
+    <circle cx="512" cy="512" r="96" fill="#b7c4d8"/>
+    <circle cx="512" cy="512" r="58" fill="#111a31"/>
+  </g>
+</svg>
