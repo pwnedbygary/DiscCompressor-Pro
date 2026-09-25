@@ -149,7 +149,7 @@ describeUnix('JobRunner', () => {
 
     // Other policies are not changed by a re-run.
     const replace = harness({ overwrite: 'overwrite' })
-    expect(await replace.run({ id: 'replace', inputPath: iso, target: 'CHD', rerun: true })).toMatchObject({ outputs: [join(outputDir, 'Game.chd')] })
+    expect(await replace.run({ id: 'replace', inputPath: iso, target: 'CHD', rerun: true })).toMatchObject({ skipped: false, outputs: [join(outputDir, 'Game.chd')] })
     expect((await readdir(outputDir)).sort()).toEqual(['Game (1).chd', 'Game.chd'])
   })
 

@@ -180,6 +180,23 @@ describe('editing jobs', () => {
     ])
   })
 
+  it('runs only finished jobs with readable inputs again, whatever else is selected', () => {
+    const q = useQueue.getState()
+    q.add([{ input: input('Bad.cue', { kind: 'cue', problem: 'Missing track file: x.bin' }) }], defaults)
+    setStatus(idOf('A.iso'), 'done')
+    setStatus(idOf('B.iso'), 'running')
+    setStatus(idOf('D.iso'), 'skipped')
+    q.reset(useQueue.getState().order)
+    const { order, jobs } = useQueue.getState()
+    expect(order.map((id) => `${jobs[id]?.input.name}:${jobs[id]?.status}:${jobs[id]?.rerun}`)).toEqual([
+      'A.iso:queued:true',
+      'B.iso:running:false',
+      'C.iso:queued:false',
+      'D.iso:queued:true',
+      'Bad.cue:failed:false'
+    ])
+  })
+
   it('requeues a finished job when its format changes', () => {
     const id = idOf('B.iso')
     setStatus(id, 'failed')
