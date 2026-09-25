@@ -278,6 +278,19 @@ async function isDreamcastCdr(tracks: SheetTrack[]): Promise<boolean> {
   return sector !== null && sector.subarray(offset, offset + DREAMCAST_BOOT.length).equals(DREAMCAST_BOOT)
 }
 
+/**
+ * Whether a cue sheet is of a Dreamcast CD-R whose tracks have pregaps or
+ * postgaps. chdman keeps them in a CHD, which Flycast 2.7 and earlier refuse.
+ */
+export async function hasDreamcastPregaps(sheet: string): Promise<boolean> {
+  try {
+    const tracks = await readSheetTracks(sheet)
+    return tracks.some((track) => track.storedPregap + track.virtualPregap + track.postgap > 0) && (await isDreamcastCdr(tracks))
+  } catch {
+    return false
+  }
+}
+
 /** The ISO 9660 volume identifier field of a data track (padded with spaces), if it has one. */
 async function volumeIdOf(track: SheetTrack): Promise<string | undefined> {
   const offset = userDataOffset(track.mode, track.sectorSize)

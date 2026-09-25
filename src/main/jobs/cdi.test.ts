@@ -4,7 +4,7 @@ import { join } from 'node:path'
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest'
 import type { CdiInfo } from '@shared/types'
 import { type CdiTrackLayout, buildCdiDescriptor, readCdiInfo } from '../formats/cdi'
-import { CdiConversionError, buildCdiFromSheet, splitCdi, splitSheetTracks } from './cdi'
+import { CdiConversionError, buildCdiFromSheet, hasDreamcastPregaps, splitCdi, splitSheetTracks } from './cdi'
 
 let root: string
 let dir: string
@@ -375,5 +375,17 @@ describe('splitSheetTracks', () => {
       'Video'
     )
     expect(await splitSheetTracks({ ...progress(), sheet: video })).toBe(false)
+  })
+})
+
+describe('hasDreamcastPregaps', () => {
+  it('tells cue sheets of Dreamcast CD-Rs with pregaps, which chdman keeps in a CHD, from others', async () => {
+    const [[stored, storedBin], [plain, plainBin]] = CHDMAN_SHEETS as [[string, Buffer], [string, Buffer]]
+    expect(await hasDreamcastPregaps(await writeSheet(stored, storedBin, 'Stored'))).toBe(true)
+    expect(await hasDreamcastPregaps(await writeSheet(plain.replace('INDEX 01 00:00:10', 'PREGAP 00:02:00\n    INDEX 01 00:00:10'), plainBin, 'Virtual'))).toBe(true)
+    expect(await hasDreamcastPregaps(await writeSheet(plain, plainBin, 'Plain'))).toBe(false)
+    const other = 'FILE "image.bin" BINARY\n  TRACK 01 AUDIO\n    INDEX 01 00:00:00\n  TRACK 02 MODE1/2048\n    PREGAP 00:02:00\n    INDEX 01 00:00:10\n'
+    expect(await hasDreamcastPregaps(await writeSheet(other, Buffer.concat([AUDIO, sectors(30, 2048, 5)]), 'Other'))).toBe(false)
+    expect(await hasDreamcastPregaps(join(dir, 'Missing.cue'))).toBe(false)
   })
 })

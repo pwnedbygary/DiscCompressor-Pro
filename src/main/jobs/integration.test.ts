@@ -204,6 +204,28 @@ describe.skipIf(!enabled)('real chdman and maxcso', () => {
         )
       ])
     )
+    // And as Redump lays out such a disc: track 2's pregap in its file, before INDEX 01.
+    await writeFile(join(inputs, 'Mixtape (Redump) (Track 1).bin'), noise.subarray(0, 76 * 2352))
+    await writeFile(join(inputs, 'Mixtape (Redump) (Track 2).bin'), noise.subarray(76 * 2352, 302 * 2352))
+    await writeFile(join(inputs, 'Mixtape (Redump) (Track 3).bin'), data)
+    await writeFile(
+      join(inputs, 'Mixtape (Redump).cue'),
+      [
+        'REM SESSION 01',
+        'FILE "Mixtape (Redump) (Track 1).bin" BINARY',
+        '  TRACK 01 AUDIO',
+        '    INDEX 01 00:00:00',
+        'FILE "Mixtape (Redump) (Track 2).bin" BINARY',
+        '  TRACK 02 AUDIO',
+        '    INDEX 00 00:00:00',
+        '    INDEX 01 00:02:00',
+        'REM SESSION 02',
+        'FILE "Mixtape (Redump) (Track 3).bin" BINARY',
+        '  TRACK 03 MODE2/2336',
+        '    INDEX 01 00:00:00',
+        ''
+      ].join('\n')
+    )
   }, 60_000)
 
   afterAll(async () => {
@@ -342,6 +364,20 @@ describe.skipIf(!enabled)('real chdman and maxcso', () => {
       [1, 0, 76, 376],
       [2, 150, 400, 11702]
     ])
+  }, 180_000)
+
+  it("warns that a CHD keeps the pregaps of a Dreamcast CD-R's cue sheet, which a detour through CDI removes", async () => {
+    const { final, events } = await run(join(inputs, 'Mixtape (Redump).cue'), 'CHD', {}, { outputDirectory: join(root, 'redump-chd') })
+    expect(final.type).toBe('done')
+    expect(events.some((e) => e.type === 'log' && e.level === 'warn' && /Flycast 2\.7 and earlier cannot open such a CHD/.test(e.message))).toBe(true)
+    const [chd] = (final as Extract<JobEvent, { type: 'done' }>).outputs
+    expect(() => flycastStarts(chd as string)).toThrow('Unsupported subtype or pre/postgap')
+
+    const [cdi] = await expectDone(run(chd as string, 'Extract', { extractCd: 'cdi' }, { outputDirectory: join(root, 'redump-cdi') }))
+    const [again] = await expectDone(run(cdi as string, 'CHD', {}, { outputDirectory: join(root, 'redump-cdi-chd') }))
+    expect(flycastStarts(again as string)).toEqual([150, 376, 11702 + 150])
+    const [direct] = await expectDone(run(join(inputs, 'Mixtape.cdi'), 'CHD', {}, { outputDirectory: join(root, 'redump-direct') }))
+    expect(sha1(again as string)).toBe(sha1(direct as string))
   }, 180_000)
 
   it('extracts other discs that end with a data track as chdman does', async () => {
