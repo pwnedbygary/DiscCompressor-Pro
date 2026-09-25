@@ -88,7 +88,7 @@ Both commands put their output in `release/`:
   into the tools. The AppImage is packed without the extra libraries electron-builder normally adds, which Electron 44 does not use
   (`scripts/appimage-tools.mjs`).
 - `npm run sources`, after `dist:linux`, writes `release/DiscCompressorPro-<version>-sources.tar` (`scripts/collect-sources.mjs`); it
-  needs git.
+  needs git and GNU tar.
 
 GitHub Actions checks every pull request on Windows and Linux (`.github/workflows/ci.yml`) and builds all four files, including the
 end-to-end tests with the bundled tools (`.github/workflows/build.yml`). For a `v*` tag matching the version in `package.json` it

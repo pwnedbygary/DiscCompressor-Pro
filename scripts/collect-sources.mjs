@@ -158,19 +158,40 @@ async function fetchSourcePackage({ name, version }, dir) {
   }
 }
 
+/** The environment without the variables that tie git to another repository, as in a git hook. */
+function gitEnvironment() {
+  const local = new Set(run('git', ['rev-parse', '--local-env-vars']).toString().split('\n'))
+  return Object.fromEntries(Object.entries(process.env).filter(([name]) => !local.has(name)))
+}
+
 /**
  * Archive Chromium's FFmpeg at the pinned commit. git verifies the fetched
- * commit by its hash; the archive is written the same way every time.
+ * commit by its hash, a SHA-1 like the repository's object names. So that the
+ * archive is the same everywhere, the repository is created without templates,
+ * the git settings that change what `git archive` writes are pinned to their
+ * defaults, and attributes files outside the repository are ignored. gzipSync
+ * uses the zlib bundled with Node (Chromium's), whose output differs from
+ * standard zlib's but not between CPUs; a Node release with a different zlib
+ * may compress differently.
  */
 async function fetchChromiumFfmpeg(dest) {
   const repo = join(CACHE, 'sources', 'chromium-ffmpeg.git')
+  const env = gitEnvironment()
+  // Named explicitly, because git may refuse to find a bare repository by itself (safe.bareRepository).
+  const gitDir = `--git-dir=${repo}`
   const commit = `${ELECTRON.ffmpeg}^{commit}`
-  if (!(await exists(repo))) run('git', ['init', '--quiet', '--bare', repo])
-  if (spawnSync('git', ['-C', repo, 'cat-file', '-e', commit]).status !== 0) {
+  if (!(await exists(repo))) run('git', ['init', '--quiet', '--bare', '--template=', '--object-format=sha1', repo], { env })
+  if (spawnSync('git', [gitDir, 'cat-file', '-e', commit], { env }).status !== 0) {
     console.log(`Fetching Chromium's FFmpeg at ${ELECTRON.ffmpeg}`)
-    run('git', ['-C', repo, 'fetch', '--quiet', '--depth', '1', CHROMIUM_FFMPEG_GIT, ELECTRON.ffmpeg])
+    run('git', [gitDir, 'fetch', '--quiet', '--depth', '1', CHROMIUM_FFMPEG_GIT, ELECTRON.ffmpeg], { env })
   }
-  const tar = run('git', ['-C', repo, 'archive', '--format=tar', `--prefix=chromium-ffmpeg-${ELECTRON.ffmpeg}/`, commit])
+  // The repository's own attributes file would change the archive too. Only a repository created
+  // from a template, as older versions of this script did, can have one.
+  await rm(join(repo, 'info', 'attributes'), { force: true })
+  const pinned = ['core.autocrlf=false', 'core.eol=lf', 'tar.umask=0002', 'core.attributesFile=/dev/null'].flatMap((setting) => ['-c', setting])
+  const tar = run('git', [...pinned, gitDir, 'archive', '--format=tar', `--prefix=chromium-ffmpeg-${ELECTRON.ffmpeg}/`, commit], {
+    env: { ...env, GIT_ATTR_NOSYSTEM: '1' }
+  })
   await mkdir(dirname(dest), { recursive: true })
   await writeFile(dest, gzipSync(tar, { level: 9 }))
 }
@@ -216,9 +237,13 @@ async function main() {
 
   await mkdir(join(ROOT, 'release'), { recursive: true })
   const output = join(ROOT, 'release', `${name}.tar`)
-  // Sorted, with fixed times, owners and permissions, so that the same inputs give the same archive.
+  // Sorted, with a fixed format, times, owners and permissions, so that the same inputs give the same
+  // archive, and without the options GNU tar would otherwise add from TAR_OPTIONS.
   const epoch = process.env.SOURCE_DATE_EPOCH ?? '0'
-  run('tar', ['--sort=name', `--mtime=@${epoch}`, '--owner=0', '--group=0', '--numeric-owner', '--mode=u+rw,go=rX', '-cf', output, '-C', dirname(staging), name])
+  const tarEnv = { ...process.env }
+  delete tarEnv.TAR_OPTIONS
+  const tarArgs = ['--format=gnu', '--sort=name', `--mtime=@${epoch}`, '--owner=0', '--group=0', '--numeric-owner', '--mode=u+rw,go=rX']
+  run('tar', [...tarArgs, '-cf', output, '-C', dirname(staging), name], { env: tarEnv })
   await rm(join(CACHE, 'staging'), { recursive: true, force: true })
   console.log(`Wrote ${output} (${((await stat(output)).size / 1024 / 1024).toFixed(0)} MB)`)
 }
