@@ -274,11 +274,11 @@ describe('cdiSheetLayout', () => {
   const info = (tracks: CdiTrackInfo[]): CdiInfo => ({ version: '3.5', sessions: new Set(tracks.map((t) => t.session)).size, tracks })
   const [audio, data] = SELFBOOT_TRACKS as [CdiTrackInfo, CdiTrackInfo]
 
-  it('keeps a standard self-booting disc as it is, without the first 150 frames', () => {
+  it('keeps a standard self-booting disc as it is, without the first 150 frames or the pregap of its data track', () => {
     expect(cdiSheetLayout(info(SELFBOOT_TRACKS))).toEqual({
       regions: [
         { start: 150, end: 452 },
-        { start: 11702, end: 18707 }
+        { start: 11852, end: 18707 }
       ],
       sessionPadding: 0,
       warning: null
@@ -289,13 +289,19 @@ describe('cdiSheetLayout', () => {
     expect(cdiSheetLayout(info([audio, { ...data, start: 11732 }]))).toMatchObject({
       regions: [
         { start: 150, end: 482 },
-        { start: 11732, end: 18737 }
+        { start: 11882, end: 18737 }
       ],
       sessionPadding: 30,
       warning: null
     })
-    // A data track without pregap counts the whole 150 frames towards the gap.
-    expect(cdiSheetLayout(info([audio, { ...data, start: 11852, pregap: 0, stored: 6855 }])).regions[1]).toEqual({ start: 11852, end: 18707 })
+    // A data track without pregap is where the gap puts it.
+    expect(cdiSheetLayout(info([audio, { ...data, start: 11852, pregap: 0, stored: 6855 }]))).toMatchObject({
+      regions: [
+        { start: 150, end: 452 },
+        { start: 11852, end: 18707 }
+      ],
+      sessionPadding: 0
+    })
   })
 
   it('warns about layouts emulators cannot find the data of', () => {
@@ -305,16 +311,21 @@ describe('cdiSheetLayout', () => {
     expect(cdiSheetLayout(info([audio, data, third])).warning).toMatch(/single data track/)
   })
 
-  it('follows the recorded addresses of tracks within a session', () => {
+  it('starts every track at its INDEX 01, giving the frames before it to the track before', () => {
     const first = { ...audio, session: 1, length: 300, stored: 452 }
     const second = { ...audio, number: 2, pregap: 150, length: 300, stored: 450, start: 452, offset: 452 * 2352 }
-    // Track 1 stores two sectors beyond its length and track 2 starts after them.
+    // Track 1 stores two sectors beyond its length, before track 2's pregap.
     expect(cdiSheetLayout(info([first, second])).regions).toEqual([
-      { start: 150, end: 452 },
-      { start: 452, end: 902 }
+      { start: 150, end: 602 },
+      { start: 602, end: 902 }
     ])
-    // A track that starts after a gap is reached through the frames before it.
-    expect(cdiSheetLayout(info([{ ...first, stored: 450 }, { ...second, start: 460 }])).regions[0]).toEqual({ start: 150, end: 460 })
+    // Frames between the tracks that neither stores go to track 1 too.
+    expect(cdiSheetLayout(info([{ ...first, stored: 450 }, { ...second, start: 460 }])).regions).toEqual([
+      { start: 150, end: 610 },
+      { start: 610, end: 910 }
+    ])
+    // The first track has nothing before it, so it takes in its own pregap beyond 00:02:00.
+    expect(cdiSheetLayout(info([{ ...audio, pregap: 200, stored: 502 }])).regions).toEqual([{ start: 150, end: 502 }])
   })
 
   it('cannot place a first track that starts before 00:02:00', () => {

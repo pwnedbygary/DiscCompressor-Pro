@@ -5,6 +5,7 @@ import {
   CdiError,
   FIRST_PREGAP_FRAMES,
   SESSION_GAP_FRAMES,
+  SESSION_PREGAP_FRAMES,
   type CdiRegion,
   type CdiTrackLayout,
   buildCdiDescriptor,
@@ -25,7 +26,10 @@ import { trackFileNames } from './plan'
  * CHD files do not record sessions. Flycast, the emulator that reads them,
  * treats a disc with several tracks that ends with a data track as such a CD-R
  * and moves that track back by the standard gap (core/imgread/chd.cpp); these
- * functions put tracks where it expects them in both directions.
+ * functions put tracks where it expects them in both directions. Flycast 2.7
+ * and earlier refuse a CHD whose tracks have pregaps, and count a stored
+ * pregap of the second session's track in a cue sheet on top of the gap, so
+ * neither is written.
  */
 
 export class CdiConversionError extends Error {}
@@ -147,12 +151,42 @@ function controlFlags(track: CdiTrackInfo): string[] {
 }
 
 /**
- * Write the tracks of a CDI image as BIN files and a cue sheet in the Redump
- * layout (one file per track, pregaps stored as INDEX 00 except the first
- * track's) and, with `sessions`, REM SESSION lines. Tracks keep the addresses
- * the image records, as `cdiSheetLayout` places them; frames the image does
- * not store are written as zeros. Subchannel data is not kept. Returns the
- * file names, sheet first.
+ * Write the frames of a track's region: those the track stores, then those
+ * of the next track's pregap if both tracks have the same format, and zeros
+ * for the rest.
+ */
+async function writeRegion(
+  copier: Copier,
+  input: FileHandle,
+  output: FileHandle,
+  region: CdiRegion,
+  track: CdiTrackInfo,
+  next: CdiTrackInfo | undefined
+): Promise<void> {
+  const sources = [track, ...(next && next.mode === track.mode && next.sectorSize === track.sectorSize ? [next] : [])]
+  let frame = region.start
+  while (frame < region.end) {
+    const source = sources.find((s) => s.start <= frame && frame < s.start + s.stored)
+    if (source) {
+      const count = Math.min(region.end, source.start + source.stored) - frame
+      const stride = cdiStoredSectorBytes(source)
+      await copier.copy(input, source.offset + (frame - source.start) * stride, count, stride, track.sectorSize, output)
+      frame += count
+    } else {
+      const upcoming = sources.map((s) => s.start).filter((start) => start > frame)
+      const until = Math.min(region.end, ...upcoming)
+      await copier.zeros(until - frame, track.sectorSize, output)
+      frame = until
+    }
+  }
+}
+
+/**
+ * Write the tracks of a CDI image as BIN files, one per track with Redump
+ * names, and a cue sheet with, if `sessions`, REM SESSION lines. Tracks keep
+ * the addresses the image records, laid out by `cdiSheetLayout`, so each file
+ * starts at its track's INDEX 01. Subchannel data is not kept. Returns the file
+ * names, sheet first.
  */
 export async function splitCdi(
   options: Progress & { source: string; info: CdiInfo; dir: string; baseName: string; sessions: boolean }
@@ -175,19 +209,11 @@ export async function splitCdi(
     for (const [index, track] of info.tracks.entries()) {
       const region = regions[index] as CdiRegion
       const name = names[index] as string
-      const from = Math.min(Math.max(region.start, track.start), region.end)
-      const to = Math.max(Math.min(region.end, track.start + track.stored), from)
-      const stride = cdiStoredSectorBytes(track)
-      await withFile(join(dir, name), 'w', async (output) => {
-        await copier.zeros(from - region.start, track.sectorSize, output)
-        await copier.copy(input, track.offset + (from - track.start) * stride, to - from, stride, track.sectorSize, output)
-        await copier.zeros(region.end - to, track.sectorSize, output)
-      })
+      await withFile(join(dir, name), 'w', (output) => writeRegion(copier, input, output, region, track, info.tracks[index + 1]))
       if (options.sessions && info.sessions > 1 && info.tracks[index - 1]?.session !== track.session) {
         lines.push(`REM SESSION ${String(track.session).padStart(2, '0')}`)
       }
-      const storedPregap = track.start + track.pregap - region.start
-      lines.push(...sheetLines(name, { number: track.number, cueMode: cdiCueMode(track), storedPregap, virtualPregap: 0, postgap: 0, flags: controlFlags(track) }))
+      lines.push(...sheetLines(name, { number: track.number, cueMode: cdiCueMode(track), storedPregap: 0, virtualPregap: 0, postgap: 0, flags: controlFlags(track) }))
     }
   })
   const sheet = `${baseName}.cue`
@@ -252,6 +278,19 @@ async function isDreamcastCdr(tracks: SheetTrack[]): Promise<boolean> {
   return sector !== null && sector.subarray(offset, offset + DREAMCAST_BOOT.length).equals(DREAMCAST_BOOT)
 }
 
+/**
+ * Whether a cue sheet is of a Dreamcast CD-R whose tracks have pregaps or
+ * postgaps. chdman keeps them in a CHD, which Flycast 2.7 and earlier refuse.
+ */
+export async function hasDreamcastPregaps(sheet: string): Promise<boolean> {
+  try {
+    const tracks = await readSheetTracks(sheet)
+    return tracks.some((track) => track.storedPregap + track.virtualPregap + track.postgap > 0) && (await isDreamcastCdr(tracks))
+  } catch {
+    return false
+  }
+}
+
 /** The ISO 9660 volume identifier field of a data track (padded with spaces), if it has one. */
 async function volumeIdOf(track: SheetTrack): Promise<string | undefined> {
   const offset = userDataOffset(track.mode, track.sectorSize)
@@ -279,10 +318,10 @@ export async function buildCdiFromSheet(options: Progress & { sheet: string; out
   for (const [index, track] of tracks.entries()) {
     const pregap = track.virtualPregap + track.storedPregap
     const secondSession = dreamcast && index === tracks.length - 1
-    const index1 = next + pregap + (secondSession ? SESSION_GAP_FRAMES - Math.min(pregap, 150) : 0)
+    const index1 = next + pregap + (secondSession ? SESSION_GAP_FRAMES - Math.min(pregap, SESSION_PREGAP_FRAMES) : 0)
     // Every sector from 00:00:00 is stored, except the gap between sessions; a
     // new session's first track keeps the usual 150-frame pregap.
-    const stored = index === 0 ? index1 : secondSession ? Math.max(pregap, 150) : pregap
+    const stored = index === 0 ? index1 : secondSession ? Math.max(pregap, SESSION_PREGAP_FRAMES) : pregap
     const length = track.frames - track.storedPregap
     layouts.push({
       session: secondSession ? 2 : 1,
@@ -323,9 +362,12 @@ export async function buildCdiFromSheet(options: Progress & { sheet: string; out
  * Flycast's cue reader finds the data track where it is in the CHD: one BIN
  * file per track (Redump names, as `trackFileNames` gives them), the two
  * sessions marked, and pregaps stored as zeros, since it ignores PREGAP lines
- * and cannot read tracks of different sector sizes from one file. The files
- * the sheet referred to before are removed; other discs are left as chdman
- * wrote them. Returns whether the disc is a Dreamcast CD-R.
+ * and cannot read tracks of different sector sizes from one file. The second
+ * session's track starts at INDEX 01, as the gap between the sessions covers
+ * 150 frames of its pregap (Flycast 2.7 and earlier would count them twice); a
+ * longer pregap pads the first session instead. The files the sheet referred
+ * to before are removed; other discs are left as chdman wrote them. Returns
+ * whether the disc is a Dreamcast CD-R.
  */
 export async function splitSheetTracks(options: Progress & { sheet: string }): Promise<boolean> {
   const { sheet } = options
@@ -337,21 +379,36 @@ export async function splitSheetTracks(options: Progress & { sheet: string }): P
   if (originals.some((path) => names.some((name) => join(dir, name) === path))) {
     throw new CdiConversionError('The extracted track files already have the names of the split ones')
   }
+  const last = tracks.at(-1) as SheetTrack
+  const padding = Math.max(last.virtualPregap + last.storedPregap - SESSION_PREGAP_FRAMES, 0)
+  const layout = tracks.map((track, index) => {
+    const secondSession = index === tracks.length - 1
+    return {
+      zeros: secondSession ? 0 : track.virtualPregap,
+      skip: secondSession ? track.storedPregap : 0,
+      padding: index === tracks.length - 2 ? padding : 0
+    }
+  })
   const copier = new Copier(
-    tracks.reduce((sum, track) => sum + (track.virtualPregap + track.frames) * track.sectorSize, 0),
+    tracks.reduce((sum, track, index) => {
+      const { zeros, skip, padding: pad } = layout[index] as (typeof layout)[number]
+      return sum + (zeros + track.frames - skip + pad) * track.sectorSize
+    }, 0),
     options
   )
   const lines: string[] = []
   for (const [index, track] of tracks.entries()) {
     const name = names[index] as string
+    const { zeros, skip, padding: pad } = layout[index] as (typeof layout)[number]
     await withFile(track.path, 'r', (input) =>
       withFile(join(dir, name), 'w', async (output) => {
-        await copier.zeros(track.virtualPregap, track.sectorSize, output)
-        await copier.copy(input, track.offset, track.frames, track.sectorSize, track.sectorSize, output)
+        await copier.zeros(zeros, track.sectorSize, output)
+        await copier.copy(input, track.offset + skip * track.sectorSize, track.frames - skip, track.sectorSize, track.sectorSize, output)
+        await copier.zeros(pad, track.sectorSize, output)
       })
     )
     if (index === 0 || index === tracks.length - 1) lines.push(`REM SESSION ${index === 0 ? '01' : '02'}`)
-    lines.push(...sheetLines(name, { ...track, storedPregap: track.virtualPregap + track.storedPregap, virtualPregap: 0 }))
+    lines.push(...sheetLines(name, { ...track, storedPregap: zeros + track.storedPregap - skip, virtualPregap: 0 }))
   }
   await writeFile(sheet, `${lines.join('\r\n')}\r\n`)
   for (const path of originals) await rm(path, { force: true })

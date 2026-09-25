@@ -189,7 +189,7 @@ function planChd(input: ScannedInput, settings: JobSettings, output: PathRef): S
     case 'gdi':
       return [createChdStep(INPUT, output, false, settings, 1)]
     case 'cdi':
-      // chdman cannot read DiscJuggler images, but it keeps the stored pregaps of a Redump-style cue sheet.
+      // chdman cannot read DiscJuggler images, so it gets their tracks as a cue sheet.
       return [
         { kind: 'cdi-split', label: 'Unpacking CDI image', weight: 0.1, baseName: 'image', sessions: false },
         createChdStep(work('image.cue'), output, false, settings, 0.9)

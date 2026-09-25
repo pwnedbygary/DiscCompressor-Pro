@@ -33,8 +33,10 @@ const TRACK_MARK = Buffer.from([0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0xff, 0xff, 
 const DJ4_MARKER = 0x80000000
 /** Marks the 78 extra bytes that DiscJuggler 3.00.780 and later write in each track record. */
 const EXTRA_BLOCK_MARKER = 0xffffffff
-/** Pregap, lead-out and lead-in between the end of the first session and INDEX 01 of the second. */
-export const SESSION_GAP_FRAMES = 6750 + 4500 + 150
+/** The part of SESSION_GAP_FRAMES that is the pregap of the second session's first track. */
+export const SESSION_PREGAP_FRAMES = 150
+/** Lead-out, lead-in and pregap between the end of the first session and INDEX 01 of the second. */
+export const SESSION_GAP_FRAMES = 6750 + 4500 + SESSION_PREGAP_FRAMES
 /** Frames before INDEX 01 of the first track. */
 export const FIRST_PREGAP_FRAMES = 150
 
@@ -197,7 +199,7 @@ export function parseCdiDescriptor(descriptor: Buffer, version: CdiVersion, data
 
 /** The frames of a CDI track that a cue sheet or CHD holds, as addresses of the CDI image. */
 export interface CdiRegion {
-  /** The first frame, where the part of the pregap that is kept begins. */
+  /** The first frame, the track's INDEX 01 (00:02:00 for the first track). */
   start: number
   /** The frame after the last. */
   end: number
@@ -212,14 +214,17 @@ export interface CdiSheetLayout {
 }
 
 /**
- * Lay out the tracks of a CDI image for a cue sheet or CHD. Those store every
- * frame from 00:02:00 on and record neither gaps nor sessions, so a track runs
- * up to where the next one's pregap starts. Emulators take a disc whose second
- * and last session holds a single data track for a Dreamcast CD-R, and start
- * that session SESSION_GAP_FRAMES after the first one ends, the track's INDEX
- * 01 included (a stored pregap of up to 150 frames counts towards the gap):
- * when the image has its second session later, the first one is padded to
- * keep it there; one that starts earlier cannot be placed.
+ * Lay out the tracks of a CDI image for a cue sheet or CHD, which store every
+ * frame from 00:02:00 on but not the gap between sessions. Every track starts
+ * at its INDEX 01 and takes in the pregap of the next track in its session,
+ * because Flycast 2.7 and earlier refuse CHDs whose tracks have pregaps.
+ *
+ * Emulators take a disc whose second and last session holds a single data
+ * track for a Dreamcast CD-R, and put that track's INDEX 01 SESSION_GAP_FRAMES
+ * after the first session ends. The gap includes the track's pregap, which is
+ * therefore not stored either (Flycast 2.7 and earlier would count it twice in
+ * a cue sheet). When the image has its second session later, the first one is
+ * padded to keep it there; one that starts earlier cannot be placed.
  */
 export function cdiSheetLayout(info: CdiInfo): CdiSheetLayout {
   const { tracks } = info
@@ -227,11 +232,12 @@ export function cdiSheetLayout(info: CdiInfo): CdiSheetLayout {
   if (first.start + first.pregap < FIRST_PREGAP_FRAMES) {
     throw new CdiError('The first track of the CDI image starts before 00:02:00, which a CHD or cue sheet cannot record')
   }
+  const index1 = (track: CdiTrackInfo): number => track.start + track.pregap
   const regions = tracks.map((track, index) => {
     const next = tracks[index + 1]
     return {
-      start: index === 0 ? FIRST_PREGAP_FRAMES : track.start,
-      end: next?.session === track.session ? next.start : track.start + track.pregap + track.length
+      start: index === 0 ? FIRST_PREGAP_FRAMES : index1(track),
+      end: next?.session === track.session ? index1(next) : index1(track) + track.length
     }
   })
   const layout: CdiSheetLayout = { regions, sessionPadding: 0, warning: null }
@@ -245,15 +251,13 @@ export function cdiSheetLayout(info: CdiInfo): CdiSheetLayout {
     return layout
   }
   const firstSession = regions.at(-2) as CdiRegion
-  const index1 = last.start + last.pregap
   const standard = firstSession.end + SESSION_GAP_FRAMES
-  if (index1 < standard) {
-    layout.warning = `The data track of this image starts ${standard - index1} frames earlier than on a standard Dreamcast CD-R, which a CHD or cue sheet cannot record, so the converted disc may not start.`
+  if (index1(last) < standard) {
+    layout.warning = `The data track of this image starts ${standard - index1(last)} frames earlier than on a standard Dreamcast CD-R, which a CHD or cue sheet cannot record, so the converted disc may not start.`
     return layout
   }
-  layout.sessionPadding = index1 - standard
+  layout.sessionPadding = index1(last) - standard
   firstSession.end += layout.sessionPadding
-  ;(regions.at(-1) as CdiRegion).start = index1 - Math.min(last.pregap, 150)
   return layout
 }
 

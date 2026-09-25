@@ -17,7 +17,7 @@ import type {
 } from '@shared/types'
 import { cdiSheetLayout } from '../formats/cdi'
 import { naturalCompare, scanInput } from '../scan'
-import { buildCdiFromSheet, splitCdi, splitSheetTracks } from './cdi'
+import { buildCdiFromSheet, hasDreamcastPregaps, splitCdi, splitSheetTracks } from './cdi'
 import { processBytesRead } from './ioCounters'
 import { convertTrackToIso } from './iso'
 import { type CdiBuildStep, type CdiSplitStep, type IsoStep, type PathRef, type Plan, type SplitTracksStep, type ToolStep, planJob } from './plan'
@@ -283,6 +283,12 @@ export class JobRunner {
       }
 
       log('info', `Started ${input.name} → ${ext ?? request.target}`)
+      if (input.kind === 'cue' && request.target === 'CHD' && (await hasDreamcastPregaps(input.path))) {
+        log(
+          'warn',
+          'The tracks of this Dreamcast CD-R have pregaps, which the CHD keeps. Flycast 2.7 and earlier cannot open such a CHD; to get one they can open, extract it to CDI and convert that to CHD.'
+        )
+      }
       await this.execute(plan, tools, context)
       job.finishing = true
       const outputs = outputDir ? await this.finalize(plan, context, outputDir, policy) : []
