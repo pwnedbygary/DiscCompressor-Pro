@@ -24,7 +24,7 @@
  * are verified and cached in $DCP_TOOLS_CACHE (default node_modules/.cache/dcp-tools).
  */
 import { spawnSync } from 'node:child_process'
-import { copyFile, mkdir, readFile, rm, stat, writeFile } from 'node:fs/promises'
+import { copyFile, mkdir, readFile, readdir, rm, stat, writeFile } from 'node:fs/promises'
 import { basename, dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { gzipSync } from 'node:zlib'
@@ -53,6 +53,9 @@ const PINNED = {
 }
 
 const FFMPEG_ARCHIVE = `chromium-ffmpeg-${ELECTRON.ffmpeg}.tar.gz`
+
+/** What this run uses in the cache's sources/ folder; everything else there is left over from other versions. */
+const usedSources = new Set()
 
 const README = (version) => `Sources for DiscCompressor Pro ${version}
 ${'='.repeat(32 + version.length)}
@@ -120,6 +123,7 @@ function run(command, args, options = {}) {
 /** Put a verified copy of `url` at `dest`, using the download cache. */
 async function fetchVerified(url, dest, expected) {
   const cached = join(CACHE, 'sources', basename(dest))
+  usedSources.add(basename(dest))
   let data = (await exists(cached)) ? await readFile(cached) : null
   if (!data || sha256(data) !== expected) {
     console.log(`Downloading ${url}`)
@@ -176,12 +180,15 @@ function gitEnvironment() {
  */
 async function fetchChromiumFfmpeg(dest) {
   const repo = join(CACHE, 'sources', 'chromium-ffmpeg.git')
+  usedSources.add(basename(repo))
   const env = gitEnvironment()
   // Named explicitly, because git may refuse to find a bare repository by itself (safe.bareRepository).
   const gitDir = `--git-dir=${repo}`
   const commit = `${ELECTRON.ffmpeg}^{commit}`
-  if (!(await exists(repo))) run('git', ['init', '--quiet', '--bare', '--template=', '--object-format=sha1', repo], { env })
-  if (spawnSync('git', [gitDir, 'cat-file', '-e', commit], { env }).status !== 0) {
+  if (!(await exists(repo)) || spawnSync('git', [gitDir, 'cat-file', '-e', commit], { env }).status !== 0) {
+    // A new repository for a new revision, so that the objects of earlier ones do not pile up.
+    await rm(repo, { recursive: true, force: true })
+    run('git', ['init', '--quiet', '--bare', '--template=', '--object-format=sha1', repo], { env })
     console.log(`Fetching Chromium's FFmpeg at ${ELECTRON.ffmpeg}`)
     run('git', [gitDir, 'fetch', '--quiet', '--depth', '1', CHROMIUM_FFMPEG_GIT, ELECTRON.ffmpeg], { env })
   }
@@ -246,6 +253,13 @@ async function main() {
   run('tar', [...tarArgs, '-cf', output, '-C', dirname(staging), name], { env: tarEnv })
   await rm(join(CACHE, 'staging'), { recursive: true, force: true })
   console.log(`Wrote ${output} (${((await stat(output)).size / 1024 / 1024).toFixed(0)} MB)`)
+
+  // Downloads of other versions would otherwise stay in the cache, and in CI's.
+  for (const entry of await readdir(join(CACHE, 'sources'))) {
+    if (usedSources.has(entry)) continue
+    console.log(`Removing ${join(CACHE, 'sources', entry)}`)
+    await rm(join(CACHE, 'sources', entry), { recursive: true, force: true })
+  }
 }
 
 main().catch((error) => {

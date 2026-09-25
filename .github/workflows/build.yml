@@ -43,7 +43,8 @@ jobs:
           record=$(bash scripts/build-linux-tools.sh --print-toolchain)
           echo "$record"
           echo "id=$(sha256sum <<<"$record" | cut -c1-16)" >> "$GITHUB_OUTPUT"
-      # Restored after `npm ci`, which deletes node_modules. Only downloads and finished binaries are kept.
+      # Restored after `npm ci`, which deletes node_modules. Only downloads and finished binaries are
+      # kept, and the scripts delete the ones the build no longer uses before the cache is saved.
       - uses: actions/cache@v6
         with:
           path: |

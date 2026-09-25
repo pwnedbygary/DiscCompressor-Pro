@@ -12,7 +12,7 @@
  */
 import { spawnSync } from 'node:child_process'
 import { mkdir, readFile, readdir, rm, stat, writeFile } from 'node:fs/promises'
-import { dirname, join } from 'node:path'
+import { basename, dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { describe, fetchWithRetry, sha256, verifyDigest } from './download.mjs'
 
@@ -53,6 +53,13 @@ async function prepare() {
   for (const arch of await readdir(join(TOOLS, 'lib'))) {
     const dir = join(TOOLS, 'lib', arch)
     for (const name of await readdir(dir)) await rm(join(dir, name), { recursive: true, force: true })
+  }
+  // Toolsets of other versions would otherwise stay in the cache, and in CI's.
+  for (const name of await readdir(CACHE)) {
+    if (name.startsWith('appimage-tools-') && name !== ARCHIVE && name !== basename(TOOLS)) {
+      console.log(`Removing ${join(CACHE, name)}`)
+      await rm(join(CACHE, name), { recursive: true, force: true })
+    }
   }
 }
 

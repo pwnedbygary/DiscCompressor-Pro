@@ -117,9 +117,16 @@ extract() {
   mv "$dir.tmp" "$dir"
 }
 
-# --- maxcso -----------------------------------------------------------------
+# --- downloads --------------------------------------------------------------
 download "https://github.com/unknownbrackets/maxcso/archive/refs/tags/v$MAXCSO_VERSION.tar.gz" \
   "maxcso-$MAXCSO_VERSION.tar.gz" "$MAXCSO_SHA256"
+download "https://github.com/mamedev/mame/archive/refs/tags/mame$MAME_VERSION.tar.gz" \
+  "mame$MAME_VERSION.tar.gz" "$MAME_SHA256"
+# Downloads of other versions would otherwise stay in the cache, and in CI's.
+find -H "$CACHE" -maxdepth 1 -type f \( -name 'mame[0-9]*.tar.gz*' -o -name 'maxcso-*.tar.gz*' \) \
+  ! -name "mame$MAME_VERSION.tar.gz" ! -name "maxcso-$MAXCSO_VERSION.tar.gz" -printf 'Removing %p\n' -delete
+
+# --- maxcso -----------------------------------------------------------------
 if ! up_to_date maxcso "$MAXCSO_RECORD"; then
   echo "Building maxcso $MAXCSO_VERSION"
   src=$BUILD/maxcso
@@ -134,8 +141,6 @@ if ! up_to_date maxcso "$MAXCSO_RECORD"; then
 fi
 
 # --- chdman -----------------------------------------------------------------
-download "https://github.com/mamedev/mame/archive/refs/tags/mame$MAME_VERSION.tar.gz" \
-  "mame$MAME_VERSION.tar.gz" "$MAME_SHA256"
 if ! up_to_date chdman "$CHDMAN_RECORD"; then
   echo "Building chdman 0.${MAME_VERSION#0}"
   # Always a fresh tree, so that no object built with an earlier toolchain is linked in.
