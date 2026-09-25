@@ -160,6 +160,30 @@ describe.skipIf(!enabled)('real chdman and maxcso', () => {
     await writeFile(join(inputs, 'track02.raw'), noise.subarray(0, 2352 * 150))
     await writeFile(join(inputs, 'track03.bin'), Buffer.concat(sectors.slice(0, 600).map((s, i) => rawSector(1, s, 45000 + i))))
     await writeFile(join(inputs, 'Dream.gdi'), '3\n1 0 4 2352 track01.bin 0\n2 450 0 2352 track02.raw 0\n3 45000 4 2352 track03.bin 0\n')
+    // The same GD-ROM as Redump's cue sheets lay it out: the audio track's pregap in its file, and a boot sector in track 3.
+    const boot = Buffer.from(sectors[0] as Buffer)
+    boot.write('SEGA SEGAKATANA SEGA ENTERPRISES', 0, 'latin1')
+    await writeFile(join(inputs, 'Dream (Track 1).bin'), await readFile(join(inputs, 'track01.bin')))
+    await writeFile(join(inputs, 'Dream (Track 2).bin'), Buffer.concat([Buffer.alloc(150 * 2352), noise.subarray(0, 2352 * 150)]))
+    await writeFile(join(inputs, 'Dream (Track 3).bin'), Buffer.concat([rawSector(1, boot, 45000), ...sectors.slice(1, 600).map((s, i) => rawSector(1, s, 45001 + i))]))
+    await writeFile(
+      join(inputs, 'Dream.cue'),
+      [
+        'REM SINGLE-DENSITY AREA',
+        'FILE "Dream (Track 1).bin" BINARY',
+        '  TRACK 01 MODE1/2352',
+        '    INDEX 01 00:00:00',
+        'FILE "Dream (Track 2).bin" BINARY',
+        '  TRACK 02 AUDIO',
+        '    INDEX 00 00:00:00',
+        '    INDEX 01 00:02:00',
+        'REM HIGH-DENSITY AREA',
+        'FILE "Dream (Track 3).bin" BINARY',
+        '  TRACK 03 MODE1/2352',
+        '    INDEX 01 00:00:00',
+        ''
+      ].join('\n')
+    )
 
     // A self-booting Dreamcast CD-R as DiscJuggler images hold it: 302 frames of audio in the first session,
     // then a Mode 2 data track in the second, which starts with the boot sector.
@@ -314,6 +338,16 @@ describe.skipIf(!enabled)('real chdman and maxcso', () => {
     const files = await expectDone(run(chd as string, 'Extract'))
     expect(files[0]).toMatch(/Dream\.gdi$/)
     expect(files.length).toBe(4)
+  }, 120_000)
+
+  it('stores the Redump cue sheets of GD-ROMs without pregaps, and does not warn about them', async () => {
+    const { final, events } = await run(join(inputs, 'Dream.cue'), 'CHD', {}, { outputDirectory: join(root, 'dream-cue') })
+    expect(final.type).toBe('done')
+    expect(events.some((e) => e.type === 'log' && /Flycast/.test(e.message))).toBe(false)
+    const [chd] = (final as Extract<JobEvent, { type: 'done' }>).outputs
+    const info = execFileSync(chdman as string, ['info', '-v', '-i', chd as string], { encoding: 'utf8' })
+    expect(info).toMatch(/CHGD/)
+    expect([...info.matchAll(/PREGAP:(\d+)/g)].map(([, frames]) => frames)).toEqual(['0', '0', '0'])
   }, 120_000)
 
   it('converts a Dreamcast CD-R between CDI, CHD and BIN/CUE, keeping its data track where Flycast reads it', async () => {
