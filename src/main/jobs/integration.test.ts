@@ -7,7 +7,10 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { DEFAULT_JOB_SETTINGS } from '@shared/formats'
 import type { AppSettings, JobEvent, JobSettings, RunJobRequest, Target, ToolsStatus } from '@shared/types'
 import { buildCdiDescriptor } from '../formats/cdi'
+import { openCisoImage } from '../formats/ciso'
+import { scanInput } from '../scan'
 import { defaultSettings } from '../settings'
+import { syntheticIso } from '../testing/fixtures'
 import { JobRunner } from './runner'
 
 /*
@@ -164,7 +167,7 @@ describe.skipIf(!enabled)('real chdman and maxcso', () => {
   })
 
   it('round-trips an ISO through a DVD CHD bit for bit', async () => {
-    const [chd] = await expectDone(run(join(inputs, 'Game.iso'), 'CHD'))
+    const [chd] = await expectDone(run(join(inputs, 'Game.iso'), 'CHD', { chdMediaChoice: 'dvd' }))
     expect(execFileSync(chdman as string, ['verify', '-i', chd as string], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] })).toMatch(/verification successful/i)
     const [back] = await expectDone(run(chd as string, 'Extract'))
     expect((await readFile(back as string)).equals(iso)).toBe(true)
@@ -206,7 +209,7 @@ describe.skipIf(!enabled)('real chdman and maxcso', () => {
   }, 240_000)
 
   it('recompresses CHDs, prints info and converts CSO to CHD', async () => {
-    const [chd] = await expectDone(run(join(inputs, 'Game.iso'), 'CHD', { chdCodecsDvd: ['zlib'] }))
+    const [chd] = await expectDone(run(join(inputs, 'Game.iso'), 'CHD', { chdMediaChoice: 'dvd', chdCodecsDvd: ['zlib'] }))
     const [recompressed] = await expectDone(run(chd as string, 'CHD', { chdCodecsDvd: ['zstd', 'lzma'] }))
     const info = execFileSync(chdman as string, ['info', '-i', recompressed as string], { encoding: 'utf8' })
     expect(info).toMatch(/zstd/)
@@ -216,7 +219,7 @@ describe.skipIf(!enabled)('real chdman and maxcso', () => {
     expect(events.some((e) => e.type === 'log' && e.level === 'output' && /Logical size/.test(e.message))).toBe(true)
 
     const [cso] = await expectDone(run(join(inputs, 'Game.iso'), 'CSO'))
-    const [fromCso] = await expectDone(run(cso as string, 'CHD'))
+    const [fromCso] = await expectDone(run(cso as string, 'CHD', { chdMediaChoice: 'dvd' }))
     const [back] = await expectDone(run(fromCso as string, 'Extract'))
     expect((await readFile(back as string)).equals(iso)).toBe(true)
   }, 300_000)
@@ -306,11 +309,42 @@ describe.skipIf(!enabled)('real chdman and maxcso', () => {
     expect(await readFile(files[0] as string, 'utf8')).not.toMatch(/REM SESSION/)
   }, 120_000)
 
+  it('reads the images maxcso compresses, and makes a DVD CHD of a PSP UMD by itself', async () => {
+    const dir = join(root, 'umd')
+    await mkdir(dir)
+    // Text that compresses and noise that does not, so that maxcso also stores blocks uncompressed.
+    const umd = Buffer.concat([syntheticIso({ systemId: 'PSP GAME' }), iso.subarray(0, 3 * 1024 * 1024), iso.subarray(iso.length - 1024 * 1024)])
+    await writeFile(join(dir, 'Umd.iso'), umd)
+    for (const [format, options] of [
+      ['cso1', ['--block=2048']],
+      ['cso1', ['--block=16384']],
+      ['cso2', ['--block=2048']],
+      ['zso', ['--block=2048']],
+      ['dax', []],
+      // Without libdeflate, maxcso writes DAX frames as zlib streams, as the format has them.
+      ['dax', ['--no-libdeflate']]
+    ] as [string, string[]][]) {
+      const output = join(dir, `Umd-${format}-${options.join('')}.${format === 'zso' ? 'zso' : format === 'dax' ? 'dax' : 'cso'}`)
+      execFileSync(maxcso as string, [`--format=${format}`, ...options, '-o', output, join(dir, 'Umd.iso')], { stdio: 'ignore' })
+      const image = await openCisoImage(output)
+      try {
+        const sectors = umd.length / 2048
+        const read = Buffer.concat(await Promise.all(Array.from({ length: Math.ceil(sectors / 256) }, (_, i) => image.read(i * 256, 256))))
+        expect(read.equals(umd), `${format} ${options.join(' ')}`).toBe(true)
+      } finally {
+        await image.close()
+      }
+      expect((await scanInput(output)).detectedMedia).toEqual({ media: 'dvd', reason: 'This is a PSP UMD image' })
+    }
+    const [chd] = await expectDone(run(join(dir, 'Umd.iso'), 'CHD', {}, { outputDirectory: join(root, 'umd-chd') }))
+    expect(execFileSync(chdman as string, ['info', '-i', chd as string], { encoding: 'utf8' })).toMatch(/Tag='DVD '/)
+  }, 180_000)
+
   it('cancels a running chdman job without leaving files behind', async () => {
     const long = join(inputs, 'Long.iso')
     await writeFile(long, Buffer.concat(Array.from({ length: 8 }, () => iso)))
     const before = await readdir(outputs)
-    const { final, events } = await run(long, 'CHD', { chdCodecsDvd: ['lzma'], threads: 1 }, {}, (event, runner) => {
+    const { final, events } = await run(long, 'CHD', { chdMediaChoice: 'dvd', chdCodecsDvd: ['lzma'], threads: 1 }, {}, (event, runner) => {
       // Cancel once chdman itself reports progress, so that the tool is really running.
       if (event.type === 'progress' && event.progress !== null && event.progress > 0) runner.cancel(event.jobId)
     })

@@ -5,7 +5,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { CDI_ISO_REASON } from '@shared/formats'
 import { buildCdiDescriptor } from './formats/cdi'
 import { scanInput, scanPaths } from './scan'
-import { syntheticChd, syntheticCso } from './testing/fixtures'
+import { storedCso, syntheticChd, syntheticCso, syntheticIso } from './testing/fixtures'
 
 let dir: string
 const SINGLE_CUE = 'FILE "Single.bin" BINARY\n  TRACK 01 MODE2/2352\n    INDEX 01 00:00:00\n'
@@ -139,6 +139,19 @@ describe('scanInput', () => {
     })
     await writeFile(join(dir, 'Broken.cdi'), Buffer.alloc(100))
     expect((await scanInput(join(dir, 'Broken.cdi'))).problem).toBe('Could not read Broken.cdi: Not a DiscJuggler image, or an unsupported version')
+  })
+
+  it('tells whether the disc of an ISO, CSO, ZSO or DAX image was a CD or a DVD', async () => {
+    await writeFile(join(dir, 'Umd.iso'), syntheticIso({ systemId: 'PSP GAME' }))
+    await writeFile(join(dir, 'Umd.cso'), storedCso(syntheticIso({ systemId: 'PSP GAME' })))
+    expect((await scanInput(join(dir, 'Umd.iso'))).detectedMedia).toEqual({ media: 'dvd', reason: 'This is a PSP UMD image' })
+    expect((await scanInput(join(dir, 'Umd.cso'))).detectedMedia).toEqual({ media: 'dvd', reason: 'This is a PSP UMD image' })
+    expect((await scanInput(join(dir, 'Plain.iso'))).detectedMedia).toMatchObject({ media: 'cd' })
+    expect((await scanInput(join(dir, 'Odd.iso'))).detectedMedia).toMatchObject({ media: 'cd' })
+    // A compressed image whose blocks cannot be read is still listed; its media is just not known.
+    await writeFile(join(dir, 'Truncated.zso'), syntheticCso(2048 * 40, 'ZISO'))
+    expect(await scanInput(join(dir, 'Truncated.zso'))).toMatchObject({ problem: null, detectedMedia: null })
+    expect((await scanInput(join(dir, 'Disc.chd'))).detectedMedia).toBeNull()
   })
 
   it('marks misaligned ISOs and unreadable files without throwing', async () => {

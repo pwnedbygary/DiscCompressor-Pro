@@ -17,6 +17,7 @@ function input(overrides: Partial<ScannedInput>): ScannedInput {
     chd: null,
     ciso: null,
     cdi: null,
+    detectedMedia: null,
     problem: null,
     ...overrides
   }
@@ -74,19 +75,33 @@ describe('CHD targets', () => {
     expect(result.finalize).toEqual({ kind: 'file', from: { ref: 'work', name: 'Game.chd' }, name: 'Game.chd' })
   })
 
+  it('makes a CD or DVD CHD of an ISO as detected, unless a media type is chosen', () => {
+    const detected = (media: 'cd' | 'dvd'): ScannedInput => input({ detectedMedia: { media, reason: 'Detected' } })
+    expect(args(plan(detected('cd'), 'CHD').steps[0])).toEqual(['createcd', '-i', '<input>', '-o', '<work>/Game.chd', '-f', '-c', 'cdlz,cdzl,cdfl'])
+    expect(args(plan(detected('dvd'), 'CHD').steps[0])[0]).toBe('createdvd')
+    expect(args(plan(detected('cd'), 'CHD', { chdMediaChoice: 'dvd' }).steps[0])[0]).toBe('createdvd')
+    // An ISO that is not whole 2048-byte sectors can only become a CD CHD.
+    const odd = input({ size: 3000, detectedMedia: { media: 'cd', reason: 'Detected' } })
+    expect(args(plan(odd, 'CHD').steps[0])[0]).toBe('createcd')
+  })
+
   it('uses createdvd or createcd for ISOs depending on the chosen media', () => {
-    expect(args(plan(input({}), 'CHD').steps[0])).toEqual(['createdvd', '-i', '<input>', '-o', '<work>/Game.chd', '-f', '-c', 'lzma,zlib,huff,flac'])
-    expect(args(plan(input({}), 'CHD', { chdMedia: 'cd' }).steps[0])[0]).toBe('createcd')
+    expect(args(plan(input({}), 'CHD', { chdMediaChoice: 'dvd' }).steps[0])).toEqual(['createdvd', '-i', '<input>', '-o', '<work>/Game.chd', '-f', '-c', 'lzma,zlib,huff,flac'])
+    expect(args(plan(input({}), 'CHD', { chdMediaChoice: 'cd' }).steps[0])[0]).toBe('createcd')
+  })
+
+  it('makes a DVD CHD of an image that could not be examined, as before detection existed', () => {
+    expect(args(plan(input({ detectedMedia: null }), 'CHD').steps[0])[0]).toBe('createdvd')
   })
 
   it('refuses a DVD CHD from an ISO that is not 2048-byte aligned', () => {
-    const result = planJob(input({ size: 2352 * 10 }), 'CHD', DEFAULT_JOB_SETTINGS, { baseName: 'Game' })
+    const result = planJob(input({ size: 2352 * 10 }), 'CHD', { ...DEFAULT_JOB_SETTINGS, chdMediaChoice: 'dvd' }, { baseName: 'Game' })
     expect(result).toEqual({ ok: false, error: expect.stringMatching(/only be stored as a CD CHD/) as unknown })
   })
 
   it('always treats GDI as a CD-style CHD', () => {
     const gdi = input({ path: '/in/Game.gdi', name: 'Game.gdi', kind: 'gdi', media: 'gdrom' })
-    expect(args(plan(gdi, 'CHD', { chdMedia: 'dvd' }).steps[0]).slice(0, 1)).toEqual(['createcd'])
+    expect(args(plan(gdi, 'CHD', { chdMediaChoice: 'dvd' }).steps[0]).slice(0, 1)).toEqual(['createcd'])
   })
 
   it('decompresses CSO first, using the configured maxcso path for it', () => {
@@ -211,7 +226,7 @@ describe('Extract', () => {
 
 describe('DiscJuggler images', () => {
   it('become CD CHDs through a Redump-style cue sheet, which chdman can read', () => {
-    const result = plan(cdi(), 'CHD', { chdCodecsCd: ['cdzs'], chdMedia: 'dvd' })
+    const result = plan(cdi(), 'CHD', { chdCodecsCd: ['cdzs'], chdMediaChoice: 'dvd' })
     expect(result.steps[0]).toEqual({ kind: 'cdi-split', label: 'Unpacking CDI image', weight: 0.1, baseName: 'image', sessions: false })
     expect(args(result.steps[1])).toEqual(['createcd', '-i', '<work>/image.cue', '-o', '<work>/Game.chd', '-f', '-c', 'cdzs'])
     expect(result.outputs).toEqual(['Game.chd'])

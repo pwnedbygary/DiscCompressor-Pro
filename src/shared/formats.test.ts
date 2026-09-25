@@ -28,6 +28,7 @@ function input(overrides: Partial<ScannedInput>): ScannedInput {
     chd: null,
     ciso: null,
     cdi: null,
+    detectedMedia: null,
     problem: null,
     ...overrides
   }
@@ -190,7 +191,26 @@ describe('outputExtension', () => {
     expect(outputExtension(cdChd(2, 'The disc has audio tracks'), 'Extract', settings)).toBe('.cdi')
     expect(extractCdFormat(cdChd(1), settings)).toBe('cdi')
     expect(normalizeJobSettings({ extractCd: 'cdi' }).extractCd).toBe('cdi')
-    expect(chdMediaFor(cdi, { ...DEFAULT_JOB_SETTINGS, chdMedia: 'dvd' })).toBe('cd')
+    expect(chdMediaFor(cdi, { ...DEFAULT_JOB_SETTINGS, chdMediaChoice: 'dvd' })).toBe('cd')
+  })
+})
+
+describe('CHD media of images of 2048-byte sectors', () => {
+  const iso = (media: 'cd' | 'dvd' | null): ScannedInput => input({ detectedMedia: media ? { media, reason: 'Detected' } : null })
+
+  it('follows what the image holds unless a media type is chosen', () => {
+    expect(chdMediaFor(iso('cd'), DEFAULT_JOB_SETTINGS)).toBe('cd')
+    expect(chdMediaFor(iso('dvd'), DEFAULT_JOB_SETTINGS)).toBe('dvd')
+    expect(chdMediaFor(iso(null), DEFAULT_JOB_SETTINGS)).toBe('dvd')
+    expect(chdMediaFor(iso('dvd'), { ...DEFAULT_JOB_SETTINGS, chdMediaChoice: 'cd' })).toBe('cd')
+    expect(chdMediaFor({ ...iso('dvd'), kind: 'cso' }, DEFAULT_JOB_SETTINGS)).toBe('dvd')
+  })
+
+  it('keeps a CD chosen in 2.1 and earlier, whose DVD was only the default', () => {
+    expect(normalizeJobSettings({ chdMedia: 'cd' }).chdMediaChoice).toBe('cd')
+    expect(normalizeJobSettings({ chdMedia: 'dvd' }).chdMediaChoice).toBe('auto')
+    expect(normalizeJobSettings({}).chdMediaChoice).toBe('auto')
+    expect(normalizeJobSettings({ chdMediaChoice: 'dvd', chdMedia: 'cd' }).chdMediaChoice).toBe('dvd')
   })
 })
 

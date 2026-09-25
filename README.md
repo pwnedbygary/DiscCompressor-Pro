@@ -43,9 +43,9 @@ Each release lists SHA-256 checksums in `SHA256SUMS.txt` and includes `DiscCompr
 - **A queue you can drive with a mouse or the keyboard.** Drop files or whole folders (images inside are found automatically and track files
   referenced by cue/GDI sheets are not added twice), reorder by dragging, select with Shift/Ctrl or by dragging a rectangle, and edit the
   settings of many jobs at once.
-- **Every tool option, validated.** CHD codecs (up to four), hunk sizes that chdman accepts, CD or DVD media for ISOs, maxcso block sizes
-  and compression methods, extraction formats and thread counts. Impossible choices are disabled with the reason shown, e.g. why a disc with
-  audio tracks cannot become an ISO.
+- **Every tool option, validated.** CHD codecs (up to four), hunk sizes that chdman accepts, CD or DVD media for ISOs (detected from their
+  contents), maxcso block sizes and compression methods, extraction formats and thread counts. Impossible choices are disabled with the
+  reason shown, e.g. why a disc with audio tracks cannot become an ISO.
 - **Real progress.** chdman's own progress is parsed; maxcso prints none when run by another program, so its progress is measured from the
   bytes it has read. The taskbar shows overall progress and the computer is kept awake while jobs run.
 - **DiscJuggler images, which chdman cannot read.** CDI files (versions 2.0 to 3.5) are read by the app itself and become a CHD or BIN/CUE

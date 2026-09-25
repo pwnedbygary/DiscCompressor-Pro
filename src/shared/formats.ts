@@ -162,7 +162,7 @@ export function csoMethodArgs(format: CsoFormat, mode: CsoMode, custom: readonly
 }
 
 export const DEFAULT_JOB_SETTINGS: JobSettings = {
-  chdMedia: 'dvd',
+  chdMediaChoice: 'auto',
   chdCodecsCd: [...DEFAULT_CD_CODECS],
   chdCodecsDvd: [...DEFAULT_DVD_CODECS],
   chdHunkCd: 0,
@@ -212,7 +212,8 @@ export function normalizeJobSettings(value: unknown): JobSettings {
     ? CSO_METHODS.map((m) => m.id).filter((id) => (raw.csoMethods as unknown[]).includes(id))
     : [...d.csoMethods]
   return {
-    chdMedia: pick(raw.chdMedia, ['cd', 'dvd'], d.chdMedia),
+    // Settings and queues of 2.1 and earlier have chdMedia, which was DVD unless the user chose CD.
+    chdMediaChoice: pick(raw.chdMediaChoice, ['auto', 'cd', 'dvd'], raw.chdMedia === 'cd' ? 'cd' : d.chdMediaChoice),
     chdCodecsCd: normalizeCodecs(raw.chdCodecsCd, CD_CODECS, DEFAULT_CD_CODECS),
     chdCodecsDvd: normalizeCodecs(raw.chdCodecsDvd, DVD_CODECS, DEFAULT_DVD_CODECS),
     chdHunkCd: hunkCd === 0 || (hunkCd !== null && isValidChdHunk(hunkCd, CD_FRAME_BYTES)) ? hunkCd : d.chdHunkCd,
@@ -312,7 +313,8 @@ export function chdMediaFor(input: ScannedInput, settings: JobSettings): Media {
   if (input.kind === 'cue' || input.kind === 'cdi') return 'cd'
   if (input.kind === 'gdi') return 'gdrom'
   if (input.kind === 'chd' && input.chd && DISC_CHD_MEDIA.has(input.chd.media)) return input.chd.media as Media
-  return settings.chdMedia
+  if (settings.chdMediaChoice !== 'auto') return settings.chdMediaChoice
+  return input.detectedMedia?.media ?? 'dvd'
 }
 
 /** How a CD CHD is extracted: as asked, except that an ISO needs a disc layout that allows it (BIN/CUE otherwise). */

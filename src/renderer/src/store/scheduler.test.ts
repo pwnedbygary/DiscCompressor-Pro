@@ -46,6 +46,7 @@ function input(name: string): ScannedInput {
     chd: null,
     ciso: null,
     cdi: null,
+    detectedMedia: null,
     problem: null
   }
 }

@@ -31,6 +31,103 @@ export function syntheticChd(options: { codecs: string[]; hunk: number; unit: nu
   return Buffer.concat([header, ...entries])
 }
 
+export interface IsoEntry {
+  name: string
+  /** A file's contents; a directory has entries instead. */
+  data?: Buffer
+  entries?: IsoEntry[]
+}
+
+/** An ISO 9660 directory record; the name "\0" is the directory itself and "\1" its parent. */
+export function directoryRecord(name: Buffer, lba: number, bytes: number, directory: boolean): Buffer {
+  const record = Buffer.alloc(33 + name.length + (name.length % 2 === 0 ? 1 : 0))
+  record[0] = record.length
+  record.writeUInt32LE(lba, 2)
+  record.writeUInt32BE(lba, 6)
+  record.writeUInt32LE(bytes, 10)
+  record.writeUInt32BE(bytes, 14)
+  record[25] = directory ? 2 : 0
+  record.writeUInt16LE(1, 28)
+  record.writeUInt16BE(1, 30)
+  record[32] = name.length
+  name.copy(record, 33)
+  return record
+}
+
+/**
+ * A small ISO 9660 image: volume descriptors at sector 16 (with a UDF volume
+ * recognition sequence after them if asked), the root directory at sector 24
+ * and the files and directories after it, padded with zeros to `sectors`.
+ * `bigEndianRootLength` overrides the big-endian copy of the root directory's
+ * length in the volume descriptor.
+ */
+export function syntheticIso(options: { systemId?: string; entries?: IsoEntry[]; udf?: boolean; sectors?: number; bigEndianRootLength?: number } = {}): Buffer {
+  const sectors: Buffer[] = []
+  const put = (lba: number, data: Buffer): void => {
+    for (let i = 0; i * 2048 < Math.max(data.length, 1); i += 1) sectors[lba + i] = Buffer.concat([data.subarray(i * 2048, (i + 1) * 2048)], 2048)
+  }
+  const record = directoryRecord
+  let next = 25
+  const directory = (entries: IsoEntry[], lba: number, parent: number): void => {
+    const records = [record(Buffer.from([0]), lba, 2048, true), record(Buffer.from([1]), parent, 2048, true)]
+    for (const entry of entries) {
+      const start = next
+      if (entry.entries) {
+        next += 1
+        records.push(record(Buffer.from(entry.name, 'latin1'), start, 2048, true))
+        directory(entry.entries, start, lba)
+      } else {
+        const data = entry.data ?? Buffer.alloc(0)
+        next += Math.max(1, Math.ceil(data.length / 2048))
+        records.push(record(Buffer.from(`${entry.name};1`, 'latin1'), start, data.length, false))
+        put(start, data)
+      }
+    }
+    put(lba, Buffer.concat(records))
+  }
+  directory(options.entries ?? [], 24, 24)
+
+  const pvd = Buffer.alloc(2048)
+  pvd[0] = 1
+  pvd.write('CD001', 1, 'latin1')
+  pvd[6] = 1
+  pvd.write((options.systemId ?? '').padEnd(32, ' '), 8, 'latin1')
+  pvd.write('TEST'.padEnd(32, ' '), 40, 'latin1')
+  const total = Math.max(options.sectors ?? 0, next)
+  pvd.writeUInt32LE(total, 80)
+  pvd.writeUInt32BE(total, 84)
+  pvd.writeUInt16LE(2048, 128)
+  pvd.writeUInt16BE(2048, 130)
+  record(Buffer.from([0]), 24, 2048, true).copy(pvd, 156)
+  if (options.bigEndianRootLength !== undefined) pvd.writeUInt32BE(options.bigEndianRootLength, 156 + 14)
+  pvd[881] = 1
+  put(16, pvd)
+  const descriptor = (type: number, id: string): Buffer => {
+    const sector = Buffer.alloc(2048)
+    sector[0] = type
+    sector.write(id, 1, 'latin1')
+    sector[6] = 1
+    return sector
+  }
+  put(17, descriptor(255, 'CD001'))
+  if (options.udf) {
+    put(18, descriptor(0, 'BEA01'))
+    put(19, descriptor(0, 'NSR02'))
+    put(20, descriptor(0, 'TEA01'))
+  }
+  return Buffer.concat(Array.from({ length: total }, (_, i) => sectors[i] ?? Buffer.alloc(2048)))
+}
+
+/** A CSO v1 file holding `image` in 2048-byte blocks, all stored uncompressed. */
+export function storedCso(image: Buffer): Buffer {
+  const blocks = Math.ceil(image.length / 2048)
+  const header = syntheticCso(image.length).subarray(0, 24)
+  const index = Buffer.alloc((blocks + 1) * 4)
+  const start = 24 + index.length
+  for (let i = 0; i <= blocks; i += 1) index.writeUInt32LE((start + Math.min(i * 2048, image.length) + (i < blocks ? 0x80000000 : 0)) >>> 0, i * 4)
+  return Buffer.concat([header, index, image])
+}
+
 export function syntheticCso(uncompressedBytes: number, magic: 'CISO' | 'ZISO' = 'CISO', version = 1): Buffer {
   const header = Buffer.alloc(64)
   header.write(magic, 0, 'latin1')

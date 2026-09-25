@@ -6,7 +6,7 @@ import { DEFAULT_JOB_SETTINGS } from '@shared/formats'
 import type { AppSettings, JobEvent, RunJobRequest, ToolsStatus } from '@shared/types'
 import { buildCdiDescriptor, readCdiInfo } from '../formats/cdi'
 import { defaultSettings } from '../settings'
-import { syntheticChd, syntheticCso, writeFakeTools } from '../testing/fixtures'
+import { syntheticChd, syntheticCso, syntheticIso, writeFakeTools } from '../testing/fixtures'
 import { JobRunner, type RunnerDependencies } from './runner'
 
 // The fake tools are shebang scripts, which Windows cannot execute directly.
@@ -109,7 +109,7 @@ describeUnix('JobRunner', () => {
     const iso = join(inputDir, 'Game.iso')
     await writeFile(iso, Buffer.alloc(2048 * 4))
     const h = harness()
-    const final = await h.run({ inputPath: iso, target: 'CHD' })
+    const final = await h.run({ inputPath: iso, target: 'CHD', settings: { ...DEFAULT_JOB_SETTINGS, chdMediaChoice: 'dvd' } })
 
     expect(final).toMatchObject({ type: 'done', outputs: [join(outputDir, 'Game.chd')], skipped: false })
     expect(await readFile(join(outputDir, 'Game.chd'), 'utf8')).toMatch(/^CHD:createdvd:.*-c lzma,zlib,huff,flac/)
@@ -119,6 +119,17 @@ describeUnix('JobRunner', () => {
     expect(logs(h).some((line) => line.startsWith('$ chdman createdvd -i'))).toBe(true)
     expect(logs(h).some((line) => line.includes('% complete'))).toBe(false)
     expect(await workDirsLeft(outputDir)).toEqual([])
+  })
+
+  it('makes a CD or DVD CHD of an ISO as its contents tell', async () => {
+    const umd = join(inputDir, 'Umd.iso')
+    const disc = join(inputDir, 'Disc.iso')
+    await writeFile(umd, syntheticIso({ systemId: 'PSP GAME' }))
+    await writeFile(disc, syntheticIso())
+    expect(await harness().run({ inputPath: umd, target: 'CHD' })).toMatchObject({ type: 'done' })
+    expect(await readFile(join(outputDir, 'Umd.chd'), 'utf8')).toMatch(/^CHD:createdvd:/)
+    expect(await harness().run({ inputPath: disc, target: 'CHD' })).toMatchObject({ type: 'done' })
+    expect(await readFile(join(outputDir, 'Disc.chd'), 'utf8')).toMatch(/^CHD:createcd:.*-c cdlz,cdzl,cdfl/)
   })
 
   it('applies the overwrite policy to existing outputs', async () => {

@@ -35,15 +35,17 @@ const V1_METHODS: Record<string, CsoMethod> = {
 }
 
 /** Translate the settings of a v1 queue export into the current model. */
-function settingsFromV1(raw: Record<string, unknown>, fileType: unknown): JobSettings {
+function settingsFromV1(raw: Record<string, unknown>, path: string): JobSettings {
   const settings = (raw.settings && typeof raw.settings === 'object' ? raw.settings : {}) as Record<string, unknown>
   const codecs = Array.isArray(settings.chdAlgorithms) ? settings.chdAlgorithms.filter((c) => typeof c === 'string') : []
   const methods = Array.isArray(settings.maxcsoAlgorithms) ? settings.maxcsoAlgorithms.filter((m) => typeof m === 'string') : []
-  const dvd = fileType === 'DVD'
+  const dvd = raw.fileType === 'DVD'
+  const sheet = /\.(cue|gdi)$/i.test(path)
   const hunk = typeof settings.hunkSize === 'number' ? settings.hunkSize : 0
   const extract = settings.extractFormat
   return normalizeJobSettings({
-    chdMedia: dvd ? 'dvd' : 'cd',
+    // v1 defaulted every image except cue sheets and GDIs to DVD, so only CD on such an image was a choice.
+    chdMediaChoice: dvd || sheet ? 'auto' : 'cd',
     chdCodecsCd: codecs.filter((c) => CD_CODECS.some((codec) => codec.id === c)),
     chdCodecsDvd: codecs.filter((c) => DVD_CODECS.some((codec) => codec.id === c)),
     [dvd ? 'chdHunkDvd' : 'chdHunkCd']: hunk,
@@ -62,7 +64,7 @@ export function parseQueueFile(text: string): QueueEntry[] {
     return data.flatMap((raw: Record<string, unknown>) => {
       if (!raw || typeof raw.inputPath !== 'string' || !raw.inputPath) return []
       const target = TARGETS.includes(raw.type as Target) ? (raw.type as Target) : null
-      return [{ path: raw.inputPath, target, settings: settingsFromV1(raw, raw.fileType) }]
+      return [{ path: raw.inputPath, target, settings: settingsFromV1(raw, raw.inputPath) }]
     })
   }
   const file = data as Partial<QueueFileV2>

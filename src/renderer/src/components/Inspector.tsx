@@ -1,7 +1,7 @@
 import { clsx } from 'clsx'
 import { CopyCheck, Info, Lock, MousePointerClick, Save } from 'lucide-react'
 import { useShallow } from 'zustand/react/shallow'
-import { TARGETS, TARGET_LABELS, type TargetAvailability, targetAvailability } from '@shared/formats'
+import { TARGETS, TARGET_LABELS, type TargetAvailability, chdMediaFor, targetAvailability } from '@shared/formats'
 import type { JobSettings, ScannedInput, Target } from '@shared/types'
 import { saveAsDefaults } from '../actions'
 import { primarySelection, selectedInOrder, useQueue } from '../store/queue'
@@ -97,6 +97,20 @@ export function Inspector() {
   const primaryId = useQueue(primarySelection)
   const job = useQueue((state) => (primaryId ? state.jobs[primaryId] : undefined))
   const editableIds = useQueue(useShallow((state) => ids.filter((id) => state.jobs[id] && state.jobs[id].status !== 'running')))
+  // How many of the selected CHD jobs make CD and DVD CHDs; with Auto a selection often holds both.
+  const mediaCounts = useQueue(
+    useShallow((state) => {
+      let cd = 0
+      let dvd = 0
+      for (const id of editableIds) {
+        const other = state.jobs[id]
+        if (other?.target !== 'CHD') continue
+        if (chdMediaFor(other.input, other.settings) === 'dvd') dvd += 1
+        else cd += 1
+      }
+      return [cd, dvd]
+    })
+  )
 
   if (!job) {
     return (
@@ -138,7 +152,7 @@ export function Inspector() {
 
         {(job.target === 'CHD' || job.target === 'CSO' || job.target === 'CSOv2' || job.target === 'ZSO' || job.target === 'Extract') && (
           <div className="space-y-4 border-t border-line pt-4">
-            {job.target === 'CHD' && <ChdSection job={job} disabled={locked} update={update} />}
+            {job.target === 'CHD' && <ChdSection job={job} disabled={locked} update={update} mediaCounts={mediaCounts} />}
             {(job.target === 'CSO' || job.target === 'CSOv2' || job.target === 'ZSO') && <CsoSection job={job} disabled={locked} update={update} />}
             {job.target === 'Extract' && <ExtractSection job={job} disabled={locked} update={update} />}
           </div>
