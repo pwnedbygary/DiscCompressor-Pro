@@ -6,6 +6,10 @@ A fast, good-looking desktop app for converting disc images. It queues up BIN/CU
 [chdman](https://docs.mamedev.org/tools/chdman.html) (from MAME) and [maxcso](https://github.com/unknownbrackets/maxcso), showing real progress
 for every job.
 
+![DiscCompressor Pro working through a queue of disc images](docs/screenshots/main-window.png)
+
+See the [2.1.2 release notes](docs/releases/2.1.2.md) for what changed since 1.3.1, with more screenshots.
+
 ## Download
 
 Releases include chdman 0.289 and maxcso 1.13.0, so nothing else needs to be installed.
