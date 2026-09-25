@@ -1,0 +1,44 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <defs>
+    <linearGradient id="tile" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#1d2847"/>
+      <stop offset="1" stop-color="#0c1224"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0" stop-color="#3584e4" stop-opacity="0.22"/>
+      <stop offset="1" stop-color="#3584e4" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="disc" x1="0.15" y1="0.1" x2="0.85" y2="0.9">
+      <stop offset="0" stop-color="#f4f7fc"/>
+      <stop offset="0.55" stop-color="#cdd7e6"/>
+      <stop offset="1" stop-color="#9fb0c9"/>
+    </linearGradient>
+    <linearGradient id="data" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#62a0ea"/>
+      <stop offset="1" stop-color="#3584e4"/>
+    </linearGradient>
+    <clipPath id="disc-half"><rect width="512" height="1024"/></clipPath>
+    <clipPath id="data-half"><circle cx="512" cy="512" r="236"/></clipPath>
+  </defs>
+  <rect x="48" y="48" width="928" height="928" rx="212" fill="url(#tile)"/>
+  <circle cx="512" cy="512" r="420" fill="url(#glow)"/>
+  <rect x="50" y="50" width="924" height="924" rx="210" fill="none" stroke="#ffffff" stroke-opacity="0.08" stroke-width="4"/>
+  <g>
+    <g clip-path="url(#disc-half)">
+      <circle cx="512" cy="512" r="282" fill="url(#disc)"/>
+      <circle cx="512" cy="512" r="226" fill="none" stroke="#0c1224" stroke-opacity="0.08" stroke-width="6"/>
+      <circle cx="512" cy="512" r="170" fill="none" stroke="#0c1224" stroke-opacity="0.08" stroke-width="6"/>
+    </g>
+    <g clip-path="url(#data-half)" fill="url(#data)">
+      <rect x="526" y="276" width="340" height="48.6"/>
+      <rect x="526" y="346.6" width="340" height="48.6"/>
+      <rect x="526" y="417.1" width="340" height="48.6"/>
+      <rect x="526" y="487.7" width="340" height="48.6"/>
+      <rect x="526" y="558.3" width="340" height="48.6"/>
+      <rect x="526" y="628.9" width="340" height="48.6"/>
+      <rect x="526" y="699.4" width="340" height="48.6"/>
+    </g>
+    <circle cx="512" cy="512" r="96" fill="#b7c4d8"/>
+    <circle cx="512" cy="512" r="52" fill="#111a31"/>
+  </g>
+</svg>

@@ -11,7 +11,7 @@ export function EmptyState() {
       <div className="flex max-w-md flex-col items-center text-center">
         <div className="relative mb-6">
           <div className="absolute inset-0 scale-125 rounded-full bg-accent/15 blur-2xl" />
-          <img src={iconUrl} alt="" className="relative size-24 rounded-3xl shadow-xl" draggable={false} />
+          <img src={iconUrl} alt="" className="relative size-24 drop-shadow-xl" draggable={false} />
         </div>
         <h2 className="text-lg font-semibold tracking-tight">Drop disc images here</h2>
         <p className="mt-1.5 text-[13px] text-muted">

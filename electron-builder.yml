@@ -71,7 +71,8 @@ linux:
   target:
     - target: AppImage
       arch: x64
-  icon: build/icon.png
+  # One PNG per size (named like 32x32.png), so that small sizes use the artwork drawn for them.
+  icon: build/icons
   category: Utility
   synopsis: Disc image converter for CHD, CSO and ZSO
   # The .desktop file is named after desktopName in package.json, which Electron also uses as the window's app ID.
