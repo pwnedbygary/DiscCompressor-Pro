@@ -122,5 +122,5 @@ The code is organised as follows and built with [electron-vite](https://electron
 - `src/renderer` — the React interface, with state in [zustand](https://github.com/pmndrs/zustand) stores and styles in Tailwind CSS.
 - `src/shared` — types and format rules used by both sides.
 
-`scripts/generate-icons.py` rebuilds every icon from `assets/icon.svg` and `assets/icon-small.svg`, the artwork for small sizes
-(it needs `rsvg-convert` from librsvg, and Pillow).
+`scripts/generate-icons.py` rebuilds every icon from `assets/icon.svg`, using `assets/icon-small.svg` for 48 px and below and the tray, and
+`assets/icon-16.svg` for 16 px. It needs `rsvg-convert` (librsvg) and Pillow.

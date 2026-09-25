@@ -1,4 +1,4 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024">
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
   <defs>
     <linearGradient id="tile" x1="0" y1="0" x2="0" y2="1">
       <stop offset="0" stop-color="#1d2847"/>
@@ -23,14 +23,14 @@
   <rect x="48" y="48" width="928" height="928" rx="212" fill="url(#tile)"/>
   <circle cx="512" cy="512" r="420" fill="url(#glow)"/>
   <rect x="50" y="50" width="924" height="924" rx="210" fill="none" stroke="#ffffff" stroke-opacity="0.08" stroke-width="4"/>
-  <g transform="translate(512 512) scale(1.0) translate(-512 -512)">
+  <g>
     <g clip-path="url(#disc-half)">
       <circle cx="512" cy="512" r="282" fill="url(#disc)"/>
       <circle cx="512" cy="512" r="226" fill="none" stroke="#0c1224" stroke-opacity="0.08" stroke-width="6"/>
       <circle cx="512" cy="512" r="170" fill="none" stroke="#0c1224" stroke-opacity="0.08" stroke-width="6"/>
     </g>
     <g clip-path="url(#data-half)" fill="url(#data)">
-      <rect x="526" y="276.0" width="340" height="48.6"/>
+      <rect x="526" y="276" width="340" height="48.6"/>
       <rect x="526" y="346.6" width="340" height="48.6"/>
       <rect x="526" y="417.1" width="340" height="48.6"/>
       <rect x="526" y="487.7" width="340" height="48.6"/>

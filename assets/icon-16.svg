@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <defs>
+    <linearGradient id="tile" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#1d2847"/>
+      <stop offset="1" stop-color="#0c1224"/>
+    </linearGradient>
+    <linearGradient id="disc" x1="0.15" y1="0.1" x2="0.85" y2="0.9">
+      <stop offset="0" stop-color="#f4f7fc"/>
+      <stop offset="0.55" stop-color="#cdd7e6"/>
+      <stop offset="1" stop-color="#9fb0c9"/>
+    </linearGradient>
+    <linearGradient id="data" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#62a0ea"/>
+      <stop offset="1" stop-color="#3584e4"/>
+    </linearGradient>
+    <clipPath id="disc-half"><rect width="512" height="1024"/></clipPath>
+  </defs>
+  <rect width="1024" height="1024" rx="224" fill="url(#tile)"/>
+  <circle cx="512" cy="512" r="384" fill="url(#disc)" clip-path="url(#disc-half)"/>
+  <g fill="url(#data)">
+    <rect x="576" y="256" width="192" height="128"/>
+    <rect x="576" y="448" width="256" height="128"/>
+    <rect x="576" y="640" width="192" height="128"/>
+  </g>
+  <circle cx="512" cy="512" r="128" fill="#b7c4d8"/>
+  <circle cx="512" cy="512" r="64" fill="#111a31"/>
+</svg>
