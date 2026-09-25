@@ -109,7 +109,9 @@ if ! up_to_date maxcso "$MAXCSO_RECORD"; then
   extract "$CACHE/maxcso-$MAXCSO_VERSION.tar.gz" "$src"
   # Upstream's Makefile links the system libuv, lz4 and zlib; -static makes the
   # result self-contained (the static glibc lookups libuv warns about are never used).
-  make -C "$src" -j"$JOBS" CFLAGS="-O2" CXXFLAGS="-O2 -static" maxcso
+  # Its `CC ?= gcc` never applies, because make's built-in CC is cc, which may be
+  # another compiler such as clang; CC and CXX name the recorded one instead.
+  make -C "$src" -j"$JOBS" CC=gcc CXX=g++ CFLAGS="-O2" CXXFLAGS="-O2 -static" maxcso
   keep maxcso "$src/maxcso" "$MAXCSO_RECORD" libuv1-dev liblz4-dev zlib1g-dev
   rm -rf "$src"
 fi
