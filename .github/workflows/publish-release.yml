@@ -1,0 +1,48 @@
+name: Publish release
+
+# A `v*` tag builds a draft release (build.yml). Once that version's notes are
+# on main in docs/releases/<version>.md, this publishes the draft with them.
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'docs/releases/**'
+      - '.github/workflows/publish-release.yml'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: publish-release
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    name: Publish the release of the current version
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+      - name: Publish the draft with its release notes
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          version=$(jq -r .version package.json)
+          notes="docs/releases/$version.md"
+          if [ ! -f "$notes" ]; then
+            echo "$notes does not exist yet; nothing to publish."
+            exit 0
+          fi
+          if ! gh release view "v$version" --json tagName > /dev/null; then
+            echo "There is no release for v$version yet; push the tag first." >&2
+            exit 1
+          fi
+          gh release edit "v$version" --title "DiscCompressor Pro $version" --notes-file "$notes" --draft=false --latest
+          # Drafts of older versions are superseded by this release.
+          gh release list --limit 100 --json tagName,isDraft --jq '.[] | select(.isDraft) | .tagName' | while read -r tag; do
+            older=$(printf '%s\n%s\n' "${tag#v}" "$version" | sort -V | head -n 1)
+            if [ "$tag" != "v$version" ] && [ "$older" = "${tag#v}" ]; then
+              echo "Deleting the superseded draft $tag"
+              gh release delete "$tag" --yes
+            fi
+          done

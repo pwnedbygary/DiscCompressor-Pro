@@ -96,7 +96,8 @@ Both commands put their output in `release/`:
 
 GitHub Actions checks every pull request on Windows and Linux (`.github/workflows/ci.yml`) and builds all four files, including the
 end-to-end tests with the bundled tools (`.github/workflows/build.yml`). For a `v*` tag matching the version in `package.json` it
-creates a draft release with the files and their checksums, ready to be published.
+creates a draft release with the files and their checksums. Once that version's notes are on `main` in `docs/releases/<version>.md`,
+`.github/workflows/publish-release.yml` publishes the draft with them and deletes drafts of older versions.
 
 ### Licences
 
