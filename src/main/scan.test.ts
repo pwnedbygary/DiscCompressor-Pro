@@ -2,6 +2,8 @@ import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
+import { CDI_ISO_REASON } from '@shared/formats'
+import { buildCdiDescriptor } from './formats/cdi'
 import { scanInput, scanPaths } from './scan'
 import { syntheticChd, syntheticCso } from './testing/fixtures'
 
@@ -25,6 +27,19 @@ beforeAll(async () => {
   await file('Odd.iso', Buffer.alloc(3000))
   await file('Disc.chd', syntheticChd({ codecs: ['cdlz'], hunk: 19584, unit: 2448, logical: 1, metadata: [['CHT2', 'TRACK:1 TYPE:MODE1_RAW SUBTYPE:NONE FRAMES:10 PREGAP:0 PGTYPE:MODE1 PGSUB:RW POSTGAP:0']] }))
   await file('Game.zso', syntheticCso(2048 * 10, 'ZISO'))
+  await file(
+    'Dream.cdi',
+    Buffer.concat([
+      Buffer.alloc(160 * 2352 + 170 * 2336),
+      buildCdiDescriptor(
+        [
+          { session: 1, mode: 0, sectorSize: 2352, subchannelSize: 0, pregap: 150, length: 10, start: 0, control: 0 },
+          { session: 2, mode: 2, sectorSize: 2336, subchannelSize: 0, pregap: 150, length: 20, start: 11410, control: 4 }
+        ],
+        { imageName: 'Dream.cdi' }
+      )
+    ])
+  )
   await file('notes.txt', 'hello')
   await mkdir(join(dir, 'sub'))
   await writeFile(join(dir, 'sub', 'Nested.iso'), Buffer.alloc(2048))
@@ -42,6 +57,7 @@ describe('scanPaths', () => {
     expect(inputs.map((input) => input.path.slice(dir.length + 1))).toEqual([
       'Data.cue',
       'Disc.chd',
+      'Dream.cdi',
       'Dream.gdi',
       'Game.zso',
       'Missing.cue',
@@ -105,6 +121,24 @@ describe('scanInput', () => {
     expect(chd).toMatchObject({ media: 'cd', isoLayout: { sectorSize: 2352, mode: 1 }, tracks: [{ type: 'MODE1_RAW' }] })
     const zso = await scanInput(join(dir, 'Game.zso'))
     expect(zso.ciso).toEqual({ format: 'zso', uncompressedBytes: 20480, blockSize: 2048 })
+  })
+
+  it('reads the tracks and sessions of DiscJuggler images', async () => {
+    const input = await scanInput(join(dir, 'Dream.cdi'))
+    expect(input).toMatchObject({
+      kind: 'cdi',
+      media: 'cd',
+      isoLayout: null,
+      isoBlocker: CDI_ISO_REASON,
+      problem: null,
+      tracks: [
+        { number: 1, type: 'AUDIO', sectorSize: 2352, frames: 10, session: 1 },
+        { number: 2, type: 'MODE2/2336', sectorSize: 2336, frames: 20, session: 2 }
+      ],
+      cdi: { version: '3.5', sessions: 2 }
+    })
+    await writeFile(join(dir, 'Broken.cdi'), Buffer.alloc(100))
+    expect((await scanInput(join(dir, 'Broken.cdi'))).problem).toBe('Could not read Broken.cdi: Not a DiscJuggler image, or an unsupported version')
   })
 
   it('marks misaligned ISOs and unreadable files without throwing', async () => {

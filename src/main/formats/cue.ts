@@ -2,8 +2,14 @@ export interface CueTrack {
   number: number
   /** Mode exactly as written, upper-cased, e.g. MODE2/2352 or AUDIO. */
   mode: string
+  /** Offset of INDEX 00 within the file, in 1/75 s frames. */
+  index0: number | null
   /** Offset of INDEX 01 within the file, in 1/75 s frames. */
   index1: number | null
+  /** Frames of pregap that are not stored in the file (the PREGAP command). */
+  pregap: number
+  /** Frames of postgap, which are never stored (the POSTGAP command). */
+  postgap: number
 }
 
 export interface CueFile {
@@ -60,11 +66,17 @@ export function parseCue(text: string): CueSheet {
       const file = files.at(-1)
       const [number, mode] = rest.split(/\s+/)
       if (!file || !number || !mode) continue
-      currentTrack = { number: Number.parseInt(number, 10), mode: mode.toUpperCase(), index1: null }
+      currentTrack = { number: Number.parseInt(number, 10), mode: mode.toUpperCase(), index0: null, index1: null, pregap: 0, postgap: 0 }
       file.tracks.push(currentTrack)
     } else if (command === 'INDEX' && currentTrack) {
       const [number, time] = rest.split(/\s+/)
-      if (number && Number.parseInt(number, 10) === 1 && time) currentTrack.index1 = parseMsf(time)
+      const index = number ? Number.parseInt(number, 10) : -1
+      if (index === 0 && time) currentTrack.index0 = parseMsf(time)
+      if (index === 1 && time) currentTrack.index1 = parseMsf(time)
+    } else if (command === 'PREGAP' && currentTrack) {
+      currentTrack.pregap = parseMsf(rest) ?? 0
+    } else if (command === 'POSTGAP' && currentTrack) {
+      currentTrack.postgap = parseMsf(rest) ?? 0
     }
   }
 

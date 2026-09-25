@@ -4,6 +4,7 @@ import { join } from 'node:path'
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest'
 import { DEFAULT_JOB_SETTINGS } from '@shared/formats'
 import type { AppSettings, JobEvent, RunJobRequest, ToolsStatus } from '@shared/types'
+import { buildCdiDescriptor, readCdiInfo } from '../formats/cdi'
 import { defaultSettings } from '../settings'
 import { syntheticChd, syntheticCso, writeFakeTools } from '../testing/fixtures'
 import { JobRunner, type RunnerDependencies } from './runner'
@@ -277,6 +278,76 @@ describeUnix('JobRunner', () => {
     await writeFile(chd, cdChd())
     const final = await harness().run({ inputPath: chd, target: 'Extract', settings: { ...DEFAULT_JOB_SETTINGS, extractCd: 'iso' } })
     expect(final).toMatchObject({ type: 'done', outputs: [join(outputDir, 'Disc.iso')], outputBytes: 2048 * 4 })
+  })
+
+  it('extracts DiscJuggler images itself and hands chdman a cue sheet to make a CHD of them', async () => {
+    const cdi = join(inputDir, 'Dream.cdi')
+    // Subchannel data on the first track, and a second session 5 frames later than usual.
+    await writeFile(
+      cdi,
+      Buffer.concat([
+        Buffer.alloc(160 * 2448 + 170 * 2336),
+        buildCdiDescriptor(
+          [
+            { session: 1, mode: 0, sectorSize: 2352, subchannelSize: 96, pregap: 150, length: 10, start: 0, control: 0 },
+            { session: 2, mode: 2, sectorSize: 2336, subchannelSize: 0, pregap: 150, length: 20, start: 11415, control: 4 }
+          ],
+          { imageName: 'Dream.cdi' }
+        )
+      ])
+    )
+    const h = harness()
+    const final = await h.run({ inputPath: cdi, target: 'Extract' })
+    expect(final).toMatchObject({ type: 'done', outputs: ['Dream.cue', 'Dream (Track 1).bin', 'Dream (Track 2).bin'].map((name) => join(outputDir, name)) })
+    expect(logs(h)).toEqual(
+      expect.arrayContaining([
+        'The CDI image stores subchannel data, which is not kept',
+        'The second session starts 5 frames later than on a standard Dreamcast CD-R; the first session is padded so that it keeps its address',
+        'Unpacked 2 tracks in 2 sessions into Dream.cue'
+      ])
+    )
+    expect(await readFile(join(outputDir, 'Dream.cue'), 'utf8')).toMatch(/^REM SESSION 01\r\n/)
+
+    const chd = await harness().run({ inputPath: cdi, target: 'CHD' })
+    expect(chd).toMatchObject({ type: 'done', outputs: [join(outputDir, 'Dream.chd')] })
+    expect(await readFile(join(outputDir, 'Dream.chd'), 'utf8')).toMatch(/^CHD:createcd:-i \S+image\.cue -o /)
+    expect(await workDirsLeft(outputDir)).toEqual([])
+  })
+
+  it('cancels a DiscJuggler image while it is unpacked, leaving nothing behind', async () => {
+    const cdi = join(inputDir, 'Big.cdi')
+    // Two chunks of copying, so that the job is cancelled between them.
+    const frames = 4000
+    await writeFile(
+      cdi,
+      Buffer.concat([
+        Buffer.alloc((150 + frames) * 2352),
+        buildCdiDescriptor([{ session: 1, mode: 1, sectorSize: 2352, subchannelSize: 0, pregap: 150, length: frames, start: 0, control: 4 }], { imageName: 'Big.cdi' })
+      ])
+    )
+    const h = harness({}, (event, runner) => {
+      if (event.type === 'progress' && event.progress !== null && event.progress > 0) runner.cancel(event.jobId)
+    })
+    expect(await h.run({ inputPath: cdi, target: 'Extract' })).toMatchObject({ type: 'cancelled' })
+    expect(await workDirsLeft(outputDir)).toEqual([])
+    expect(await readdir(outputDir)).toEqual([])
+  })
+
+  it('keeps the files chdman extracts for a CD that ends with a data track but is not a Dreamcast CD-R', async () => {
+    const chd = join(inputDir, 'Extra.chd')
+    const tracks = ['AUDIO', 'MODE1'].map((type, i) => `TRACK:${i + 1} TYPE:${type} SUBTYPE:NONE FRAMES:4 PREGAP:0 PGTYPE:MODE1 PGSUB:RW POSTGAP:0`)
+    await writeFile(chd, syntheticChd({ codecs: ['cdlz'], hunk: 19584, unit: 2448, logical: 1, metadata: tracks.map((text) => ['CHT2', text] as [string, string]) }))
+    const final = await harness().run({ inputPath: chd, target: 'Extract' })
+    expect(final).toMatchObject({ type: 'done', outputs: [join(outputDir, 'Extra.cue'), join(outputDir, 'Extra.bin')] })
+  })
+
+  it('builds a CDI from the cue sheet chdman extracts from a CD CHD', async () => {
+    const chd = join(inputDir, 'Disc.chd')
+    await writeFile(chd, cdChd())
+    const final = await harness().run({ inputPath: chd, target: 'Extract', settings: { ...DEFAULT_JOB_SETTINGS, extractCd: 'cdi' } })
+    expect(final).toMatchObject({ type: 'done', outputs: [join(outputDir, 'Disc.cdi')] })
+    expect((await readCdiInfo(join(outputDir, 'Disc.cdi'))).tracks).toMatchObject([{ mode: 1, sectorSize: 2048, pregap: 150, length: 4 }])
+    expect(await workDirsLeft(outputDir)).toEqual([])
   })
 
   it('fails Verify when chdman reports a checksum mismatch or cannot check the CHD', async () => {

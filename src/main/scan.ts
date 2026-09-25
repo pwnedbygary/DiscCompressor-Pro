@@ -1,7 +1,8 @@
 import { opendir, readFile, stat } from 'node:fs/promises'
 import { basename, dirname, extname, join, resolve } from 'node:path'
-import { INPUT_EXTENSIONS, isoLayoutForChdTrack, isoLayoutForCueMode } from '@shared/formats'
+import { CDI_ISO_REASON, INPUT_EXTENSIONS, isoLayoutForChdTrack, isoLayoutForCueMode } from '@shared/formats'
 import type { InputKind, IsoLayout, ScanResult, ScannedInput, TrackInfo } from '@shared/types'
+import { cdiCueMode, readCdiInfo } from './formats/cdi'
 import { TRACK_SECTOR_BYTES, normalizeTrackType, readChdInfo } from './formats/chd'
 import { readCisoInfo } from './formats/ciso'
 import { parseCue } from './formats/cue'
@@ -52,6 +53,7 @@ function emptyInput(path: string, kind: InputKind): ScannedInput {
     isoBlocker: null,
     chd: null,
     ciso: null,
+    cdi: null,
     problem: null
   }
 }
@@ -173,6 +175,21 @@ async function scanCiso(input: ScannedInput): Promise<void> {
   input.ciso = await readCisoInfo(input.path)
 }
 
+async function scanCdi(input: ScannedInput): Promise<void> {
+  input.size = (await fileSize(input.path)) ?? 0
+  const cdi = await readCdiInfo(input.path)
+  input.cdi = cdi
+  input.media = 'cd'
+  input.tracks = cdi.tracks.map((track) => ({
+    number: track.number,
+    type: cdiCueMode(track),
+    sectorSize: track.sectorSize,
+    frames: track.length,
+    session: track.session
+  }))
+  input.isoBlocker = CDI_ISO_REASON
+}
+
 const SCANNERS: Record<InputKind, (input: ScannedInput) => Promise<void>> = {
   cue: scanCue,
   gdi: scanGdi,
@@ -180,7 +197,8 @@ const SCANNERS: Record<InputKind, (input: ScannedInput) => Promise<void>> = {
   chd: scanChd,
   cso: scanCiso,
   zso: scanCiso,
-  dax: scanCiso
+  dax: scanCiso,
+  cdi: scanCdi
 }
 
 /** Inspect a single image file. Problems are reported on the result, never thrown. */

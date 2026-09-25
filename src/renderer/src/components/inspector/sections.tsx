@@ -14,6 +14,7 @@ import {
   csoMethodImplies,
   csoMethodsFor,
   effectiveCsoMethods,
+  endsWithDataTrack,
   extractCdFormat
 } from '@shared/formats'
 import type { CsoMode, JobSettings } from '@shared/types'
@@ -123,7 +124,7 @@ export function ChdSection(props: SectionProps) {
         hint={
           choosable
             ? 'DVD for DVD-based discs such as PS2 DVDs and PSP UMDs; CD for images of CD-based discs.'
-            : `Set by the ${recompress ? 'source CHD' : job.input.kind === 'gdi' ? 'GDI sheet' : 'cue sheet'}.`
+            : `Set by the ${recompress ? 'source CHD' : job.input.kind === 'gdi' ? 'GDI sheet' : job.input.kind === 'cdi' ? 'CDI image' : 'cue sheet'}.`
         }
       >
         {choosable ? (
@@ -235,6 +236,14 @@ export function CsoSection(props: SectionProps) {
 export function ExtractSection(props: SectionProps) {
   const { job, disabled, update } = props
   const { input } = job
+  if (input.kind === 'cdi') {
+    const sessions = (input.cdi?.sessions ?? 1) > 1
+    return (
+      <Field label="Output" hint={sessions ? 'One BIN file per track, with the sessions marked in the cue sheet.' : 'One BIN file per track.'}>
+        <div className="rounded-lg border border-line bg-surface px-2.5 py-1.5 text-[13px]">BIN/CUE</div>
+      </Field>
+    )
+  }
   if (input.kind !== 'chd') {
     return (
       <>
@@ -268,19 +277,25 @@ export function ExtractSection(props: SectionProps) {
       </Field>
     )
   }
+  const format = extractCdFormat(input, job.settings)
+  const isoHint = input.isoLayout ? 'ISO keeps only the 2,048-byte user data of each sector.' : `ISO is unavailable: ${input.isoBlocker ?? 'unsupported disc layout'}.`
+  const hint =
+    format === 'cdi'
+      ? 'A DiscJuggler image, as Dreamcast CD-Rs are usually shared; a Dreamcast CD-R gets its second session back.'
+      : endsWithDataTrack(input)
+        ? `A Dreamcast CD-R gets one BIN file per track, with its sessions marked in the cue sheet. ${isoHint}`
+        : isoHint
   return (
-    <Field
-      label="Output"
-      hint={input.isoLayout ? 'ISO keeps only the 2,048-byte user data of each sector.' : `ISO is unavailable: ${input.isoBlocker ?? 'unsupported disc layout'}.`}
-    >
+    <Field label="Output" hint={hint}>
       <Segmented
         label="Output"
-        value={extractCdFormat(input, job.settings)}
+        value={format}
         disabled={disabled}
         onChange={(extractCd) => update({ extractCd })}
         options={[
           { value: 'cue', label: 'BIN/CUE' },
-          { value: 'iso', label: 'ISO', disabled: !input.isoLayout, title: input.isoBlocker ?? undefined }
+          { value: 'iso', label: 'ISO', disabled: !input.isoLayout, title: input.isoBlocker ?? undefined },
+          { value: 'cdi', label: 'CDI' }
         ]}
       />
     </Field>

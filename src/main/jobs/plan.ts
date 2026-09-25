@@ -5,6 +5,7 @@ import {
   TARGET_LABELS,
   chdMediaFor,
   csoMethodArgs,
+  endsWithDataTrack,
   extractCdFormat,
   isValidChdHunk,
   targetAvailability
@@ -51,7 +52,34 @@ export interface IsoStep {
   output: PathRef
 }
 
-export type Step = ToolStep | IsoStep
+/** Write the input DiscJuggler image as BIN files and a cue sheet named after `baseName` in the work directory. */
+export interface CdiSplitStep {
+  kind: 'cdi-split'
+  label: string
+  weight: number
+  baseName: string
+  /** Mark the sessions in the cue sheet (REM SESSION). */
+  sessions: boolean
+}
+
+/** Build a DiscJuggler image from a cue sheet written by chdman extractcd. */
+export interface CdiBuildStep {
+  kind: 'cdi-build'
+  label: string
+  weight: number
+  sheet: PathRef
+  output: PathRef
+}
+
+/** Rewrite the sheet chdman extractcd wrote for a Dreamcast CD-R so that Flycast reads it; other discs keep it as it is. */
+export interface SplitTracksStep {
+  kind: 'split-tracks'
+  label: string
+  weight: number
+  sheet: PathRef
+}
+
+export type Step = ToolStep | IsoStep | CdiSplitStep | CdiBuildStep | SplitTracksStep
 
 export type Finalize =
   /** Move one work file into the output directory under `name`. */
@@ -115,6 +143,13 @@ function decompressCisoStep(input: ScannedInput, output: PathRef, settings: JobS
   }
 }
 
+/** Redump names of a disc's track files: one per track, numbered with two digits from 10 tracks on. */
+export function trackFileNames(baseName: string, tracks: number): string[] {
+  if (tracks === 1) return [`${baseName}.bin`]
+  const width = tracks >= 10 ? 2 : 1
+  return Array.from({ length: tracks }, (_, index) => `${baseName} (Track ${String(index + 1).padStart(width, '0')}).bin`)
+}
+
 function extractCdSteps(output: PathRef, bin: PathRef | null, weight: number): ToolStep {
   return {
     kind: 'tool',
@@ -153,6 +188,12 @@ function planChd(input: ScannedInput, settings: JobSettings, output: PathRef): S
     case 'cue':
     case 'gdi':
       return [createChdStep(INPUT, output, false, settings, 1)]
+    case 'cdi':
+      // chdman cannot read DiscJuggler images, but it keeps the stored pregaps of a Redump-style cue sheet.
+      return [
+        { kind: 'cdi-split', label: 'Unpacking CDI image', weight: 0.1, baseName: 'image', sessions: false },
+        createChdStep(work('image.cue'), output, false, settings, 0.9)
+      ]
     case 'iso':
       if (dvd && input.size % DVD_SECTOR_BYTES !== 0) {
         return 'The ISO size is not a multiple of 2048 bytes, so it can only be stored as a CD CHD'
@@ -232,15 +273,19 @@ function planCso(input: ScannedInput, target: Target, settings: JobSettings, out
 }
 
 /**
- * The files `chdman extractcd` may write for a sheet, sheet first (chdman
- * 0.289, do_extract_cd). GDI output gets one file per track and other cue
- * sheets a single BIN. GD-ROM cue sheets follow the Redump layout with one
- * file per track in current versions, but a single BIN in older ones such as
- * 0.264, so both sets of names are claimed.
+ * The files an extraction to a sheet may write, sheet first. `chdman
+ * extractcd` (0.289, do_extract_cd) gives GDI output one file per track and
+ * other cue sheets a single BIN. GD-ROM cue sheets follow the Redump layout
+ * with one file per track in current versions, but a single BIN in older ones
+ * such as 0.264, so both sets of names are claimed. Both are also claimed for
+ * a CD that ends with a data track, which the split-tracks step gives one file
+ * per track if it is a Dreamcast CD-R. DiscJuggler images get one per track.
  */
 export function extractedFileNames(input: ScannedInput, sheet: string): string[] {
   const base = sheet.slice(0, sheet.lastIndexOf('.'))
   const gdi = sheet.endsWith('.gdi')
+  if (input.kind === 'cdi') return [sheet, ...trackFileNames(base, input.tracks.length)]
+  if (input.chd?.media === 'cd' && endsWithDataTrack(input)) return [sheet, ...trackFileNames(base, input.tracks.length), `${base}.bin`]
   if (!gdi && input.chd?.media !== 'gdrom') return [sheet, `${base}.bin`]
   const padded = gdi || input.tracks.length >= 10
   const number = (index: number): string => String(index + 1).padStart(padded ? 2 : 1, '0')
@@ -262,6 +307,12 @@ function outputNames(input: ScannedInput, finalize: Finalize): string[] {
 }
 
 function planExtract(input: ScannedInput, settings: JobSettings, baseName: string): Omit<Plan, 'outputs'> | string {
+  if (input.kind === 'cdi') {
+    return {
+      steps: [{ kind: 'cdi-split', label: 'Extracting CDI image', weight: 1, baseName, sessions: true }],
+      finalize: { kind: 'sheet', sheet: `${baseName}.cue` }
+    }
+  }
   if (input.kind === 'cso' || input.kind === 'zso' || input.kind === 'dax') {
     const iso = work(`${baseName}.iso`)
     return { steps: [decompressCisoStep(input, iso, settings, 1)], finalize: { kind: 'file', from: iso, name: `${baseName}.iso` } }
@@ -290,12 +341,26 @@ function planExtract(input: ScannedInput, settings: JobSettings, baseName: strin
       return { steps: [extractCdSteps(work(sheet), null, 1)], finalize: { kind: 'sheet', sheet } }
     }
     case 'cd': {
-      const layout = extractCdFormat(input, settings) === 'iso' ? input.isoLayout : null
-      if (!layout) {
-        const sheet = `${baseName}.cue`
-        return { steps: [extractCdSteps(work(sheet), null, 1)], finalize: { kind: 'sheet', sheet } }
+      const format = extractCdFormat(input, settings)
+      if (format === 'cdi') {
+        const name = `${baseName}.cdi`
+        return {
+          steps: [
+            extractCdSteps(work('image.cue'), null, 0.6),
+            { kind: 'cdi-build', label: 'Building CDI image', weight: 0.4, sheet: work('image.cue'), output: work(name) }
+          ],
+          finalize: { kind: 'file', from: work(name), name }
+        }
       }
-      const { steps, iso } = isoFromCdSteps(input, layout, 0.8, 0.2)
+      if (format === 'cue') {
+        const sheet = `${baseName}.cue`
+        if (!endsWithDataTrack(input)) return { steps: [extractCdSteps(work(sheet), null, 1)], finalize: { kind: 'sheet', sheet } }
+        return {
+          steps: [extractCdSteps(work(sheet), null, 0.8), { kind: 'split-tracks', label: 'Writing track files', weight: 0.2, sheet: work(sheet) }],
+          finalize: { kind: 'sheet', sheet }
+        }
+      }
+      const { steps, iso } = isoFromCdSteps(input, input.isoLayout as IsoLayout, 0.8, 0.2)
       return { steps, finalize: { kind: 'file', from: iso, name: `${baseName}.iso` } }
     }
     default:

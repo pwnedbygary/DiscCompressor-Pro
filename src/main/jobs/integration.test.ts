@@ -6,6 +6,7 @@ import { delimiter, join } from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { DEFAULT_JOB_SETTINGS } from '@shared/formats'
 import type { AppSettings, JobEvent, JobSettings, RunJobRequest, Target, ToolsStatus } from '@shared/types'
+import { buildCdiDescriptor } from '../formats/cdi'
 import { defaultSettings } from '../settings'
 import { JobRunner } from './runner'
 
@@ -131,6 +132,31 @@ describe.skipIf(!enabled)('real chdman and maxcso', () => {
     await writeFile(join(inputs, 'track02.raw'), noise.subarray(0, 2352 * 150))
     await writeFile(join(inputs, 'track03.bin'), Buffer.concat(sectors.slice(0, 600).map((s, i) => rawSector(1, s, 45000 + i))))
     await writeFile(join(inputs, 'Dream.gdi'), '3\n1 0 4 2352 track01.bin 0\n2 450 0 2352 track02.raw 0\n3 45000 4 2352 track03.bin 0\n')
+
+    // A self-booting Dreamcast CD-R as DiscJuggler images hold it: 302 frames of audio in the first session,
+    // then a Mode 2 data track in the second, which starts with the boot sector.
+    const data = Buffer.concat(
+      sectorsOf(iso.subarray(0, 2048 * 400)).map((user, i) => Buffer.concat([Buffer.from([0, 0, 0x08, 0, 0, 0, 0x08, 0]), user, Buffer.alloc(280, i & 0xff)]))
+    )
+    data.write('SEGA SEGAKATANA SEGA ENTERPRISES', 8, 'latin1')
+    data.set(Buffer.from([1, ...Buffer.from('CD001', 'latin1')]), 16 * 2336 + 8)
+    data.write('SELFBOOT'.padEnd(32, ' '), 16 * 2336 + 8 + 40, 'latin1')
+    await writeFile(
+      join(inputs, 'Selfboot.cdi'),
+      Buffer.concat([
+        Buffer.alloc(150 * 2352),
+        noise.subarray(0, 302 * 2352),
+        Buffer.alloc(150 * 2336),
+        data,
+        buildCdiDescriptor(
+          [
+            { session: 1, mode: 0, sectorSize: 2352, subchannelSize: 0, pregap: 150, length: 302, start: 0, control: 0 },
+            { session: 2, mode: 2, sectorSize: 2336, subchannelSize: 0, pregap: 150, length: 400, start: 11702, control: 4 }
+          ],
+          { imageName: 'Selfboot.cdi', volumeId: 'SELFBOOT'.padEnd(32, ' ') }
+        )
+      ])
+    )
   }, 60_000)
 
   afterAll(async () => {
@@ -219,6 +245,65 @@ describe.skipIf(!enabled)('real chdman and maxcso', () => {
     const files = await expectDone(run(chd as string, 'Extract'))
     expect(files[0]).toMatch(/Dream\.gdi$/)
     expect(files.length).toBe(4)
+  }, 120_000)
+
+  it('converts a Dreamcast CD-R between CDI, CHD and BIN/CUE, keeping its data track where Flycast reads it', async () => {
+    const cdi = join(inputs, 'Selfboot.cdi')
+    const sha1 = (chd: string): string => /^SHA1:\s+([0-9a-f]{40})$/m.exec(execFileSync(chdman as string, ['info', '-i', chd], { encoding: 'utf8' }))?.[1] ?? ''
+    const [chd] = await expectDone(run(cdi, 'CHD', {}, { outputDirectory: join(root, 'selfboot-chd') }))
+    expect(execFileSync(chdman as string, ['verify', '-i', chd as string], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] })).toMatch(/verification successful/i)
+
+    // The pregap of the data track is stored in the CHD, as a cue sheet's INDEX 00 has it.
+    const metadata = [...execFileSync(chdman as string, ['info', '-v', '-i', chd as string], { encoding: 'utf8' }).matchAll(/TRACK:\d+ TYPE:(\S+) SUBTYPE:\S+ FRAMES:(\d+) PREGAP:(\d+) PGTYPE:(\S+)/g)]
+    const tracks = metadata.map(([, type, frames, pregap, pgtype]) => ({ type: type as string, frames: Number(frames), pregap: Number(pregap), stored: (pgtype as string).startsWith('V') }))
+    expect(tracks).toEqual([
+      { type: 'AUDIO', frames: 302, pregap: 0, stored: false },
+      { type: 'MODE2', frames: 550, pregap: 150, stored: true }
+    ])
+    // Flycast (core/imgread/chd.cpp) puts INDEX 01 after the pregap, and moves the last track of a disc
+    // that ends with a data track back by the gap between the sessions of a CD-R, less the pregap it has.
+    let frame = 150
+    const starts = tracks.map((track) => {
+      const start = frame + track.pregap
+      frame = start + track.frames - (track.stored ? track.pregap : 0)
+      return start
+    })
+    starts[1] = (starts[1] as number) + 11400 - Math.min(tracks[1]?.pregap ?? 0, 150)
+    expect(starts).toEqual([150, 11702 + 150])
+
+    const [back] = await expectDone(run(chd as string, 'Extract', { extractCd: 'cdi' }, { outputDirectory: join(root, 'selfboot-cdi') }))
+    expect((await readFile(back as string)).equals(await readFile(cdi))).toBe(true)
+
+    const sheets = []
+    for (const [source, dir] of [
+      [cdi, 'selfboot-cue'],
+      [chd as string, 'selfboot-cue-from-chd']
+    ]) {
+      const files = await expectDone(run(source as string, 'Extract', {}, { outputDirectory: join(root, dir as string) }))
+      expect(files.map((file) => file.slice(join(root, dir as string).length + 1))).toEqual(['Selfboot.cue', 'Selfboot (Track 1).bin', 'Selfboot (Track 2).bin'])
+      sheets.push(await Promise.all(files.map((file) => readFile(file))))
+    }
+    const [fromCdi, fromChd] = sheets as [Buffer[], Buffer[]]
+    expect(fromCdi[0]?.toString('utf8')).toMatch(/^REM SESSION 01\r\n.*\r\nREM SESSION 02\r\n/s)
+    fromCdi.forEach((file, i) => expect(file.equals(fromChd[i] as Buffer)).toBe(true))
+
+    const [fromSheet] = await expectDone(run(join(root, 'selfboot-cue', 'Selfboot.cue'), 'CHD', {}, { outputDirectory: join(root, 'selfboot-cue-chd') }))
+    expect(sha1(fromSheet as string)).toBe(sha1(chd as string))
+  }, 180_000)
+
+  it('extracts other discs that end with a data track as chdman does', async () => {
+    const dir = join(root, 'extra')
+    await mkdir(dir)
+    await writeFile(join(dir, 'Extra (Track 1).bin'), iso.subarray(iso.length - 300 * 2352))
+    await writeFile(join(dir, 'Extra (Track 2).bin'), Buffer.concat([Buffer.alloc(150 * 2352), ...sectorsOf(iso.subarray(0, 2048 * 300)).map((s, i) => rawSector(1, s, 450 + i))]))
+    await writeFile(
+      join(dir, 'Extra.cue'),
+      'FILE "Extra (Track 1).bin" BINARY\n  TRACK 01 AUDIO\n    INDEX 01 00:00:00\nFILE "Extra (Track 2).bin" BINARY\n  TRACK 02 MODE1/2352\n    INDEX 00 00:00:00\n    INDEX 01 00:02:00\n'
+    )
+    const [chd] = await expectDone(run(join(dir, 'Extra.cue'), 'CHD', {}, { outputDirectory: join(root, 'extra-chd') }))
+    const files = await expectDone(run(chd as string, 'Extract', {}, { outputDirectory: join(root, 'extra-cue') }))
+    expect(files.map((file) => file.slice(join(root, 'extra-cue').length + 1))).toEqual(['Extra.cue', 'Extra.bin'])
+    expect(await readFile(files[0] as string, 'utf8')).not.toMatch(/REM SESSION/)
   }, 120_000)
 
   it('cancels a running chdman job without leaving files behind', async () => {

@@ -16,6 +16,7 @@ function input(overrides: Partial<ScannedInput>): ScannedInput {
     isoBlocker: null,
     chd: null,
     ciso: null,
+    cdi: null,
     problem: null,
     ...overrides
   }
@@ -39,6 +40,18 @@ const chd = (media: ChdInfo['media'], layout: ScannedInput['isoLayout'] = null):
   input({ path: '/in/Game.chd', name: 'Game.chd', kind: 'chd', files: ['/in/Game.chd'], media: media as ScannedInput['media'], chd: chdInfo(media), isoLayout: layout })
 const cso = (kind: 'cso' | 'zso' | 'dax' = 'cso'): ScannedInput =>
   input({ path: `/in/Game.${kind}`, name: `Game.${kind}`, kind, files: [`/in/Game.${kind}`], ciso: { format: 'cso1', uncompressedBytes: 2048 * 1000, blockSize: 2048 } })
+const track = (type: string, i: number): TrackInfo => ({ number: i + 1, type, sectorSize: 2352 })
+const cdi = (types = ['AUDIO', 'MODE2/2336']): ScannedInput =>
+  input({
+    path: '/in/Game.cdi',
+    name: 'Game.cdi',
+    kind: 'cdi',
+    files: ['/in/Game.cdi'],
+    media: 'cd',
+    tracks: types.map((type, i) => ({ ...track(type, i), session: i + 1 })),
+    isoBlocker: 'DiscJuggler images can only become a CHD or BIN/CUE',
+    cdi: { version: '3.5', sessions: types.length, tracks: [] }
+  })
 
 function plan(source: ScannedInput, target: Target, settings: Partial<JobSettings> = {}): Plan {
   const result = planJob(source, target, { ...DEFAULT_JOB_SETTINGS, ...settings }, { baseName: 'Game' })
@@ -157,7 +170,6 @@ describe('Extract', () => {
   })
 
   it('predicts every file extractcd writes, using chdman track names', () => {
-    const track = (type: string, i: number): TrackInfo => ({ number: i + 1, type, sectorSize: 2352 })
     const gd = { ...chd('gdrom'), tracks: ['MODE1', 'AUDIO', 'MODE1'].map(track) }
     expect(plan(gd, 'Extract').outputs).toEqual(['Game.gdi', 'Game01.bin', 'Game02.raw', 'Game03.bin'])
     // Older chdman versions (0.264) write GD-ROM cue sheets with a single BIN, so that name is claimed too.
@@ -170,6 +182,52 @@ describe('Extract', () => {
 
   it('decompresses CSO/ZSO/DAX with maxcso', () => {
     expect(args(plan(cso('zso'), 'Extract', { threads: 2 }).steps[0])).toEqual(['--decompress', '--threads=2', '-o', '<work>/Game.iso', '<input>'])
+  })
+
+  it('may give CD CHDs that end with a data track one file per track, as a Dreamcast CD-R needs', () => {
+    const selfboot = { ...chd('cd'), tracks: ['AUDIO', 'MODE2'].map(track) }
+    const result = plan(selfboot, 'Extract')
+    expect(args(result.steps[0])).toEqual(['extractcd', '-i', '<input>', '-o', '<work>/Game.cue', '-f'])
+    expect(result.steps[1]).toEqual({ kind: 'split-tracks', label: 'Writing track files', weight: 0.2, sheet: { ref: 'work', name: 'Game.cue' } })
+    expect(result.finalize).toEqual({ kind: 'sheet', sheet: 'Game.cue' })
+    // Other discs keep chdman's single BIN, so that name is claimed too.
+    expect(result.outputs).toEqual(['Game.cue', 'Game (Track 1).bin', 'Game (Track 2).bin', 'Game.bin'])
+  })
+
+  it('builds a CDI from a CD CHD through a cue sheet', () => {
+    const result = plan({ ...chd('cd'), tracks: ['AUDIO', 'MODE2'].map(track) }, 'Extract', { extractCd: 'cdi' })
+    expect(args(result.steps[0])).toEqual(['extractcd', '-i', '<input>', '-o', '<work>/image.cue', '-f'])
+    expect(result.steps[1]).toEqual({
+      kind: 'cdi-build',
+      label: 'Building CDI image',
+      weight: 0.4,
+      sheet: { ref: 'work', name: 'image.cue' },
+      output: { ref: 'work', name: 'Game.cdi' }
+    })
+    expect(result.finalize).toEqual({ kind: 'file', from: { ref: 'work', name: 'Game.cdi' }, name: 'Game.cdi' })
+    expect(result.outputs).toEqual(['Game.cdi'])
+  })
+})
+
+describe('DiscJuggler images', () => {
+  it('become CD CHDs through a Redump-style cue sheet, which chdman can read', () => {
+    const result = plan(cdi(), 'CHD', { chdCodecsCd: ['cdzs'], chdMedia: 'dvd' })
+    expect(result.steps[0]).toEqual({ kind: 'cdi-split', label: 'Unpacking CDI image', weight: 0.1, baseName: 'image', sessions: false })
+    expect(args(result.steps[1])).toEqual(['createcd', '-i', '<work>/image.cue', '-o', '<work>/Game.chd', '-f', '-c', 'cdzs'])
+    expect(result.outputs).toEqual(['Game.chd'])
+  })
+
+  it('are extracted to one BIN per track and a cue sheet that marks the sessions', () => {
+    const result = plan(cdi(), 'Extract')
+    expect(result.steps).toEqual([{ kind: 'cdi-split', label: 'Extracting CDI image', weight: 1, baseName: 'Game', sessions: true }])
+    expect(result.finalize).toEqual({ kind: 'sheet', sheet: 'Game.cue' })
+    expect(result.outputs).toEqual(['Game.cue', 'Game (Track 1).bin', 'Game (Track 2).bin'])
+    expect(plan(cdi(['MODE1/2048']), 'Extract').outputs).toEqual(['Game.cue', 'Game.bin'])
+  })
+
+  it('cannot become an ISO-based format', () => {
+    expect(planJob(cdi(), 'CSO', DEFAULT_JOB_SETTINGS, { baseName: 'Game' })).toEqual({ ok: false, error: 'DiscJuggler images can only become a CHD or BIN/CUE' })
+    expect(planJob(cdi(), 'Info', DEFAULT_JOB_SETTINGS, { baseName: 'Game' }).ok).toBe(false)
   })
 })
 

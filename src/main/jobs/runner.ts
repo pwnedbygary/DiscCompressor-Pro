@@ -15,10 +15,12 @@ import type {
   ToolName,
   ToolsStatus
 } from '@shared/types'
+import { cdiSheetLayout } from '../formats/cdi'
 import { naturalCompare, scanInput } from '../scan'
+import { buildCdiFromSheet, splitCdi, splitSheetTracks } from './cdi'
 import { processBytesRead } from './ioCounters'
 import { convertTrackToIso } from './iso'
-import { type IsoStep, type PathRef, type Plan, type ToolStep, planJob } from './plan'
+import { type CdiBuildStep, type CdiSplitStep, type IsoStep, type PathRef, type Plan, type SplitTracksStep, type ToolStep, planJob } from './plan'
 import { updatePlaylist } from './playlist'
 import { type RunningTool, formatCommand, startTool } from './process'
 import { isChdmanNoise, parseChdmanProgress } from './progress'
@@ -421,7 +423,8 @@ export class JobRunner {
         context.progress(fraction === null ? null : (completed + step.weight * fraction) / totalWeight, step.label)
       report(0)
       if (step.kind === 'tool') await this.runTool(step, tools, context, report)
-      else await this.runIso(step, context, report)
+      else if (step.kind === 'iso') await this.runIso(step, context, report)
+      else await this.runDiscStep(step, context, report)
       completed += step.weight
     }
   }
@@ -431,6 +434,43 @@ export class JobRunner {
     const destination = this.resolve(step.output, context)
     context.log('info', `Converting ${basename(source)} (${step.layout.sectorSize}-byte Mode ${step.layout.mode} sectors) to ISO`)
     await convertTrackToIso({ source, destination, layout: step.layout, signal: context.signal, onProgress: report })
+  }
+
+  private async runDiscStep(step: CdiSplitStep | CdiBuildStep | SplitTracksStep, context: JobContext, report: (fraction: number) => void): Promise<void> {
+    const progress = { signal: context.signal, onProgress: report }
+    switch (step.kind) {
+      case 'cdi-split': {
+        const { cdi } = context.input
+        if (!cdi) throw new JobError('The CDI image could not be read')
+        if (cdi.tracks.some((track) => track.subchannelSize > 0)) {
+          context.log('warn', 'The CDI image stores subchannel data, which is not kept')
+        }
+        for (const track of cdi.tracks.filter((t) => t.mode === 2 && t.sectorSize === 2048)) {
+          context.log('warn', `Track ${track.number} holds Mode 2 sectors of 2,048 bytes, which Flycast reads from CDI images only`)
+        }
+        const layout = cdiSheetLayout(cdi)
+        if (layout.warning) context.log('warn', layout.warning)
+        if (layout.sessionPadding > 0) {
+          context.log(
+            'info',
+            `The second session starts ${layout.sessionPadding} frames later than on a standard Dreamcast CD-R; the first session is padded so that it keeps its address`
+          )
+        }
+        const files = await splitCdi({ ...progress, source: context.input.path, info: cdi, dir: context.workDir, baseName: step.baseName, sessions: step.sessions })
+        context.log('info', `Unpacked ${cdi.tracks.length} ${cdi.tracks.length === 1 ? 'track' : 'tracks'} in ${cdi.sessions} ${cdi.sessions === 1 ? 'session' : 'sessions'} into ${basename(files[0] as string)}`)
+        return
+      }
+      case 'cdi-build': {
+        const sessions = await buildCdiFromSheet({ ...progress, sheet: this.resolve(step.sheet, context), output: this.resolve(step.output, context) })
+        if (sessions > 1) context.log('info', 'The disc is a Dreamcast CD-R; its data track is written as a second session')
+        return
+      }
+      case 'split-tracks':
+        if (await splitSheetTracks({ ...progress, sheet: this.resolve(step.sheet, context) })) {
+          context.log('info', 'The disc is a Dreamcast CD-R; the cue sheet marks its two sessions')
+        }
+        return
+    }
   }
 
   private async runTool(step: ToolStep, tools: ToolsStatus, context: JobContext, report: (fraction: number | null) => void): Promise<void> {

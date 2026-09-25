@@ -3,7 +3,7 @@ import { pickAndAdd } from '../actions'
 import iconUrl from '../assets/icon.png'
 import { Button } from './ui/Button'
 
-const FORMATS = ['BIN/CUE', 'GDI', 'ISO', 'CHD', 'CSO', 'ZSO', 'DAX']
+const FORMATS = ['BIN/CUE', 'GDI', 'CDI', 'ISO', 'CHD', 'CSO', 'ZSO', 'DAX']
 
 export function EmptyState() {
   return (
@@ -15,7 +15,7 @@ export function EmptyState() {
         </div>
         <h2 className="text-lg font-semibold tracking-tight">Drop disc images here</h2>
         <p className="mt-1.5 text-[13px] text-muted">
-          Compress to CHD, CSO or ZSO, extract back to BIN/CUE, GDI or ISO, and verify CHDs. Folders are searched for images automatically.
+          Compress to CHD, CSO or ZSO, extract back to BIN/CUE, GDI, ISO or CDI, and verify CHDs. Folders are searched for images automatically.
         </p>
         <div className="mt-4 flex flex-wrap justify-center gap-1.5">
           {FORMATS.map((format) => (
