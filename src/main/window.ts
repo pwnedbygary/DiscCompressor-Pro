@@ -63,7 +63,8 @@ export function createMainWindow(settings: AppSettings, onStateChange: (state: W
     title: 'DiscCompressor Pro',
     backgroundColor: theme.colors.bg,
     show: false,
-    ...(process.platform === 'darwin' ? {} : { icon: iconPath('icon.png') }),
+    // Windows gets the frame of each size it shows only from an .ico; from a PNG it scales one image.
+    ...(process.platform === 'darwin' ? {} : { icon: iconPath(process.platform === 'win32' ? 'icon.ico' : 'icon.png') }),
     webPreferences: {
       preload: join(import.meta.dirname, '../preload/index.cjs'),
       contextIsolation: true,

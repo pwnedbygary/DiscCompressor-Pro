@@ -1,6 +1,6 @@
 import { CircleHelp, FolderPlus, LoaderCircle, PanelRight, Play, Plus, Settings, Square, SquareTerminal } from 'lucide-react'
 import { pickAndAdd } from '../actions'
-import iconUrl from '../assets/icon.png'
+import iconUrl from '../assets/icon-small.png'
 import { startQueue, stopQueue } from '../store/scheduler'
 import { useQueue } from '../store/queue'
 import { useUi } from '../store/ui'
