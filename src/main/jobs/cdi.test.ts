@@ -388,4 +388,22 @@ describe('hasDreamcastPregaps', () => {
     expect(await hasDreamcastPregaps(await writeSheet(other, Buffer.concat([AUDIO, sectors(30, 2048, 5)]), 'Other'))).toBe(false)
     expect(await hasDreamcastPregaps(join(dir, 'Missing.cue'))).toBe(false)
   })
+
+  it('leaves out the Redump cue sheets of GD-ROMs, whose pregaps chdman removes', async () => {
+    // A GD-ROM whose last track is the one that boots, and whose audio track has a pregap.
+    const boot = Buffer.alloc(20 * 2352)
+    BOOT.copy(boot, 16)
+    await writeFile(join(dir, 'GD (Track 1).bin'), sectors(20, 2352, 10))
+    await writeFile(join(dir, 'GD (Track 2).bin'), sectors(160, 2352, 11))
+    await writeFile(join(dir, 'GD (Track 3).bin'), boot)
+    const tracks = [
+      'FILE "GD (Track 1).bin" BINARY\n  TRACK 01 MODE1/2352\n    INDEX 01 00:00:00\n',
+      'FILE "GD (Track 2).bin" BINARY\n  TRACK 02 AUDIO\n    INDEX 00 00:00:00\n    INDEX 01 00:02:00\n',
+      'FILE "GD (Track 3).bin" BINARY\n  TRACK 03 MODE1/2352\n    INDEX 01 00:00:00\n'
+    ]
+    await writeFile(join(dir, 'Tracks.cue'), tracks.join(''))
+    expect(await hasDreamcastPregaps(join(dir, 'Tracks.cue'))).toBe(true)
+    await writeFile(join(dir, 'GD.cue'), `REM SINGLE-DENSITY AREA\n${tracks[0]}${tracks[1]}REM HIGH-DENSITY AREA\n${tracks[2]}`)
+    expect(await hasDreamcastPregaps(join(dir, 'GD.cue'))).toBe(false)
+  })
 })

@@ -281,9 +281,13 @@ async function isDreamcastCdr(tracks: SheetTrack[]): Promise<boolean> {
 /**
  * Whether a cue sheet is of a Dreamcast CD-R whose tracks have pregaps or
  * postgaps. chdman keeps them in a CHD, which Flycast 2.7 and earlier refuse.
+ * It removes them from the Redump cue sheets of GD-ROMs, which mark both of
+ * the disc's areas (cdrom_file::is_gdicue), so those are not CD-Rs here.
  */
 export async function hasDreamcastPregaps(sheet: string): Promise<boolean> {
   try {
+    const text = await readFile(sheet, 'utf8')
+    if (/^\s*REM\s+SINGLE-DENSITY AREA/m.test(text) && /^\s*REM\s+HIGH-DENSITY AREA/m.test(text)) return false
     const tracks = await readSheetTracks(sheet)
     return tracks.some((track) => track.storedPregap + track.virtualPregap + track.postgap > 0) && (await isDreamcastCdr(tracks))
   } catch {
