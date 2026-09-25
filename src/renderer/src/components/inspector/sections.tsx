@@ -104,8 +104,8 @@ function CodecPicker({ job, disabled, update }: SectionProps) {
   )
 }
 
-export function ChdSection(props: SectionProps) {
-  const { job, disabled, update } = props
+export function ChdSection(props: SectionProps & { mediaCounts?: number[] }) {
+  const { job, disabled, update, mediaCounts } = props
   const media = chdMediaFor(job.input, job.settings)
   const dvd = media === 'dvd'
   const choosable = job.input.kind === 'iso' || job.input.kind === 'cso' || job.input.kind === 'zso' || job.input.kind === 'dax'
@@ -116,26 +116,38 @@ export function ChdSection(props: SectionProps) {
   const defaultLabel = recompress
     ? `Keep current (${formatNumber(job.input.chd?.hunkBytes ?? 0)} bytes)`
     : `Default (${formatNumber(dvd ? CHD_DEFAULT_HUNK.dvd : CHD_DEFAULT_HUNK.cd)} bytes)`
+  const chdKind = (kind: 'cd' | 'dvd'): string => (kind === 'dvd' ? 'a DVD CHD (createdvd)' : 'a CD CHD (createcd)')
+  const detected = job.input.detectedMedia
+  const choice = job.settings.chdMediaChoice
+  let mediaHint = `Set by the ${recompress ? 'source CHD' : job.input.kind === 'gdi' ? 'GDI sheet' : job.input.kind === 'cdi' ? 'CDI image' : 'cue sheet'}.`
+  if (choosable && choice === 'auto') {
+    mediaHint = `${detected?.reason ?? 'The image could not be examined'}, so Auto makes ${chdKind(dvd ? 'dvd' : 'cd')}.`
+  } else if (choosable) {
+    mediaHint =
+      detected && detected.media !== choice
+        ? `${detected.reason}; Auto would make ${chdKind(detected.media)}.`
+        : 'DVD for DVD-based discs such as PS2 DVDs and PSP UMDs; CD for images of CD-based discs.'
+  }
+  const [cdJobs = 0, dvdJobs = 0] = mediaCounts ?? []
+  if (cdJobs > 0 && dvdJobs > 0) {
+    const cdPart = cdJobs === 1 ? '1 makes a CD CHD' : `${cdJobs} make CD CHDs`
+    const dvdPart = dvdJobs === 1 ? '1 a DVD CHD' : `${dvdJobs} DVD CHDs`
+    mediaHint += ` Of the selected jobs, ${cdPart} and ${dvdPart}; the codecs and hunk size below are those of the ${dvd ? 'DVD' : 'CD'} ones.`
+  }
 
   return (
     <>
-      <Field
-        label="Media type"
-        hint={
-          choosable
-            ? 'DVD for DVD-based discs such as PS2 DVDs and PSP UMDs; CD for images of CD-based discs.'
-            : `Set by the ${recompress ? 'source CHD' : job.input.kind === 'gdi' ? 'GDI sheet' : job.input.kind === 'cdi' ? 'CDI image' : 'cue sheet'}.`
-        }
-      >
+      <Field label="Media type" hint={mediaHint}>
         {choosable ? (
           <Segmented
             label="Media type"
-            value={job.settings.chdMedia}
+            value={choice}
             disabled={disabled}
-            onChange={(chdMedia) => update({ chdMedia })}
+            onChange={(chdMediaChoice) => update({ chdMediaChoice })}
             options={[
-              { value: 'dvd', label: 'DVD (createdvd)' },
-              { value: 'cd', label: 'CD (createcd)' }
+              { value: 'auto', label: 'Auto' },
+              { value: 'dvd', label: 'DVD' },
+              { value: 'cd', label: 'CD' }
             ]}
           />
         ) : (

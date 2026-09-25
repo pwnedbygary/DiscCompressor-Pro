@@ -5,15 +5,15 @@ export type Target = 'CHD' | 'CSO' | 'CSOv2' | 'ZSO' | 'Extract' | 'Info' | 'Ver
 
 export type Media = 'cd' | 'dvd' | 'gdrom'
 
-export type ChdMediaChoice = 'cd' | 'dvd'
+export type ChdMediaChoice = 'auto' | 'cd' | 'dvd'
 
 export type CsoMode = 'fast' | 'default' | 'max' | 'custom'
 
 export type CsoMethod = 'zlib' | 'zopfli' | '7zdeflate' | 'libdeflate' | 'lz4' | 'lz4brute'
 
 export interface JobSettings {
-  /** CD or DVD CHD when the input does not determine it (ISO, CSO, ZSO, DAX). */
-  chdMedia: ChdMediaChoice
+  /** CD or DVD CHD when the input does not determine it (ISO, CSO, ZSO, DAX); 'auto' goes by what the image holds. */
+  chdMediaChoice: ChdMediaChoice
   chdCodecsCd: string[]
   chdCodecsDvd: string[]
   /** Hunk size in bytes; 0 keeps chdman's default. */
@@ -126,6 +126,13 @@ export interface CdiInfo {
   tracks: CdiTrackInfo[]
 }
 
+/** What an image's contents tell about the disc it came from. */
+export interface DetectedMedia {
+  media: 'cd' | 'dvd'
+  /** Why, as a sentence without its full stop, e.g. "This is a PSP UMD image". */
+  reason: string
+}
+
 export interface ScannedInput {
   path: string
   name: string
@@ -142,6 +149,8 @@ export interface ScannedInput {
   chd: ChdInfo | null
   ciso: CisoInfo | null
   cdi: CdiInfo | null
+  /** For images of 2048-byte sectors (ISO, CSO, ZSO, DAX): whether their disc was a CD or a DVD. */
+  detectedMedia: DetectedMedia | null
   /** A problem that makes the image unusable, e.g. a missing track file. */
   problem: string | null
 }

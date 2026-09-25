@@ -56,7 +56,14 @@ function Formats() {
       <Topic title="CHD — Compressed Hunks of Data">
         <p>
           MAME&apos;s lossless disc format, also read by many emulators. CD images (BIN/CUE, GDI, CDI) are stored with <code>createcd</code>; DVD images with{' '}
-          <code>createdvd</code>. For a plain ISO you choose which in the job settings.
+          <code>createdvd</code>.
+        </p>
+        <p>
+          An ISO, CSO, ZSO or DAX image can come from either. With the media type on Auto, its contents decide: PSP UMDs, DVD-Video discs and GameCube,
+          Wii and Xbox images become DVD CHDs, PlayStation discs CD CHDs, and PlayStation 2 discs DVD CHDs if they carry the UDF file system of PS2 DVDs.
+          Other images become DVD CHDs when they are larger than a CD can hold or have a UDF file system, as DVDs do (some tools add one to CD images
+          too; choose CD for those), and CD CHDs otherwise. An image whose size is not a multiple of 2,048 bytes can only become a CD CHD, and one that
+          cannot be read becomes a DVD CHD. You can also choose in the job settings.
         </p>
         <p>
           A CHD can list up to four codecs and chdman keeps whichever makes each hunk smallest. LZMA compresses best, Zstandard decompresses fastest and FLAC

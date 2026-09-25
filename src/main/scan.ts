@@ -1,12 +1,14 @@
-import { opendir, readFile, stat } from 'node:fs/promises'
+import { open, opendir, readFile, stat } from 'node:fs/promises'
 import { basename, dirname, extname, join, resolve } from 'node:path'
 import { CDI_ISO_REASON, INPUT_EXTENSIONS, isoLayoutForChdTrack, isoLayoutForCueMode } from '@shared/formats'
-import type { InputKind, IsoLayout, ScanResult, ScannedInput, TrackInfo } from '@shared/types'
+import type { DetectedMedia, InputKind, IsoLayout, ScanResult, ScannedInput, TrackInfo } from '@shared/types'
 import { cdiCueMode, readCdiInfo } from './formats/cdi'
 import { TRACK_SECTOR_BYTES, normalizeTrackType, readChdInfo } from './formats/chd'
-import { readCisoInfo } from './formats/ciso'
+import { openCisoImage, readCisoInfo } from './formats/ciso'
 import { parseCue } from './formats/cue'
 import { parseGdi } from './formats/gdi'
+import { SECTOR_BYTES, type SectorReader } from './formats/iso9660'
+import { detectDiscMedia } from './formats/media'
 
 const MAX_SHEET_BYTES = 1024 * 1024
 const MAX_WALK_ENTRIES = 200_000
@@ -54,6 +56,7 @@ function emptyInput(path: string, kind: InputKind): ScannedInput {
     chd: null,
     ciso: null,
     cdi: null,
+    detectedMedia: null,
     problem: null
   }
 }
@@ -133,12 +136,32 @@ async function scanGdi(input: ScannedInput): Promise<void> {
   if (missing) input.problem = `Missing track file: ${basename(missing)}`
 }
 
+/** What the image says about its disc; an image that cannot be read that far is simply not detected. */
+async function detectMedia(read: SectorReader, bytes: number): Promise<DetectedMedia | null> {
+  try {
+    return await detectDiscMedia(read, bytes)
+  } catch {
+    return null
+  }
+}
+
 async function scanIso(input: ScannedInput): Promise<void> {
   const size = await fileSize(input.path)
   input.size = size ?? 0
   if (size === null) input.problem = 'File not found'
   else if (size === 0) input.problem = 'The file is empty'
   else if (size % 2048 !== 0) input.isoBlocker = 'The file size is not a multiple of 2048 bytes'
+  if (size === null || size === 0) return
+  const file = await open(input.path, 'r')
+  try {
+    input.detectedMedia = await detectMedia(async (lba, count) => {
+      const buffer = Buffer.alloc(count * SECTOR_BYTES)
+      const { bytesRead } = await file.read(buffer, 0, buffer.length, lba * SECTOR_BYTES)
+      return buffer.subarray(0, bytesRead)
+    }, size)
+  } finally {
+    await file.close()
+  }
 }
 
 function chdIsoLayout(tracks: TrackInfo[]): { layout: IsoLayout | null; blocker: string | null } {
@@ -173,6 +196,13 @@ async function scanChd(input: ScannedInput): Promise<void> {
 async function scanCiso(input: ScannedInput): Promise<void> {
   input.size = (await fileSize(input.path)) ?? 0
   input.ciso = await readCisoInfo(input.path)
+  const image = await openCisoImage(input.path).catch(() => null)
+  if (!image) return
+  try {
+    input.detectedMedia = await detectMedia(image.read, image.info.uncompressedBytes)
+  } finally {
+    await image.close()
+  }
 }
 
 async function scanCdi(input: ScannedInput): Promise<void> {
