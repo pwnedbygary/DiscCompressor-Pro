@@ -1,4 +1,5 @@
 # electron-builder configuration: https://www.electron.build/docs/configuration
+# Build with `npm run dist:win` (on Windows or Linux) or `npm run dist:linux` (on Linux).
 appId: com.disccompressor.pro
 productName: DiscCompressor Pro
 copyright: Copyright © DiscCompressor
@@ -13,27 +14,82 @@ publish: null
 files:
   - out/**
   - package.json
+  # koffi is only used on Windows, where its native module is shipped as an extra
+  # resource (see win.extraResources), whichever OS builds the installer. Its
+  # per-platform packages, documentation and sources are not needed.
+  - '!node_modules/@koromix/**'
+  - '!node_modules/koffi/{doc,lib,vendor}/**'
+  - '!node_modules/koffi/src/**/*.{c,cc,h,hh,inc,S,asm,def,txt}'
+  # koffi's build helper, which only compiles the native module from source.
+  - '!node_modules/koffi/cnoke.cjs'
 
 extraResources:
   - from: resources/icons
     to: icons
+  - from: resources/licenses
+    to: licenses
+
+electronFuses:
+  runAsNode: false
+  enableNodeOptionsEnvironmentVariable: false
+  enableNodeCliInspectArguments: false
+  # Integrity validation is enforced on Windows (and macOS); electron-builder embeds the hashes.
+  enableEmbeddedAsarIntegrityValidation: true
+  onlyLoadAppFromAsar: true
+  grantFileProtocolExtraPrivileges: false
 
 win:
-  target: nsis
+  target:
+    - target: nsis
+      arch: x64
+    - target: portable
+      arch: x64
   icon: build/icon.ico
+  extraResources:
+    # Fetched and checksum-verified by scripts/fetch-windows-tools.mjs.
+    - from: resources/bin/win-x64
+      to: bin
+    # Found there by koffi's loader (process.resourcesPath/koffi/<platform>_<arch>).
+    - from: build/native/koffi/win32_x64
+      to: koffi/win32_x64
 
 nsis:
   oneClick: false
   perMachine: false
+  # Per-user only (see build/installer.nsh), so electron-updater's elevation helper is not needed.
+  include: build/installer.nsh
+  packElevateHelper: false
   allowToChangeInstallationDirectory: true
+  # Without an auto-updater there is no use for a block map, and the app can be compressed as one solid archive.
+  differentialPackage: false
+  artifactName: DiscCompressorPro-${version}-Setup-${arch}.${ext}
+
+portable:
+  artifactName: DiscCompressorPro-${version}-Portable-${arch}.${ext}
 
 linux:
-  target: AppImage
+  target:
+    - target: AppImage
+      arch: x64
   icon: build/icon.png
   category: Utility
   synopsis: Disc image converter for CHD, CSO and ZSO
+  # The .desktop file is named after desktopName in package.json, which Electron also uses as the window's app ID.
+  syncDesktopName: true
+  desktop:
+    entry:
+      Keywords: disc;image;iso;chd;cso;zso;cue;gdi;convert;compress;
+  extraResources:
+    # Built statically from source by scripts/build-linux-tools.sh.
+    - from: resources/bin/linux-x64
+      to: bin
+
+appImage:
+  artifactName: DiscCompressorPro-${version}-${arch}.${ext}
 
 toolsets:
   # The static AppImage runtime runs without libfuse2, which Ubuntu 22.04+ and
-  # other current distributions no longer install by default.
+  # other current distributions no longer install by default. electron-builder
+  # 26 lists this toolset as a beta, so check it (and the checksum pinned in
+  # scripts/appimage-tools.mjs) whenever electron-builder is upgraded.
   appimage: "1.0.3"

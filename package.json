@@ -1,11 +1,13 @@
 {
   "name": "disccompressor-pro",
-  "version": "2.0.0",
+  "version": "2.1.2",
   "description": "Convert disc images between BIN/CUE, GDI, ISO, CHD, CSO and ZSO",
   "author": "DiscCompressor",
+  "homepage": "https://github.com/pwnedbygary/DiscCompressor-Pro",
   "private": true,
   "type": "module",
   "main": "./out/main/index.js",
+  "desktopName": "disccompressor-pro.desktop",
   "engines": {
     "node": ">=22.12.0"
   },
@@ -20,9 +22,12 @@
     "test": "vitest run",
     "test:integration": "vitest run src/main/jobs/integration.test.ts",
     "check": "npm run typecheck && npm run lint && npm run test",
-    "dist": "npm run build && electron-builder",
-    "dist:win": "npm run build && electron-builder --win",
-    "dist:linux": "npm run build && electron-builder --linux",
+    "tools:win": "node scripts/fetch-windows-tools.mjs",
+    "tools:linux": "bash scripts/build-linux-tools.sh",
+    "notices": "node scripts/generate-notices.mjs",
+    "dist:win": "npm run build && npm run tools:win && npm run notices && electron-builder --win && node scripts/verify-installer-plugins.mjs",
+    "dist:linux": "npm run build && npm run tools:linux && npm run notices && node scripts/appimage-tools.mjs electron-builder --linux",
+    "sources": "node scripts/collect-sources.mjs",
     "clean": "node -e \"for (const d of ['out','release']) require('node:fs').rmSync(d, { recursive: true, force: true })\""
   },
   "dependencies": {
@@ -37,6 +42,7 @@
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
     "@vitejs/plugin-react": "^5.2.0",
+    "7z-wasm": "^1.2.0",
     "clsx": "^2.1.1",
     "electron": "^44.4.5",
     "electron-builder": "^26.16.1",
