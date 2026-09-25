@@ -6,7 +6,7 @@ import { delimiter, join } from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { DEFAULT_JOB_SETTINGS } from '@shared/formats'
 import type { AppSettings, JobEvent, JobSettings, RunJobRequest, Target, ToolsStatus } from '@shared/types'
-import { buildCdiDescriptor } from '../formats/cdi'
+import { buildCdiDescriptor, readCdiInfo } from '../formats/cdi'
 import { openCisoImage } from '../formats/ciso'
 import { scanInput } from '../scan'
 import { defaultSettings } from '../settings'
@@ -59,6 +59,31 @@ function rawSector(mode: 1 | 2, data: Buffer, lba: number): Buffer {
 
 function sectorsOf(iso: Buffer): Buffer[] {
   return Array.from({ length: iso.length / 2048 }, (_, i) => iso.subarray(i * 2048, (i + 1) * 2048))
+}
+
+/** The SHA-1 that chdman records for a CHD's data and metadata. */
+function sha1(chd: string): string {
+  return /^SHA1:\s+([0-9a-f]{40})$/m.exec(execFileSync(chdman as string, ['info', '-i', chd], { encoding: 'utf8' }))?.[1] ?? ''
+}
+
+/**
+ * The frames at which Flycast 2.7 and earlier put the INDEX 01 of each track
+ * of a CD CHD (core/imgread/chd.cpp): they refuse tracks with pregaps, lay the
+ * tracks out one after the other from 00:02:00, and move the last track of a
+ * disc with several back by the gap between the sessions of a CD-R.
+ */
+function flycastStarts(chd: string): number[] {
+  const info = execFileSync(chdman as string, ['info', '-v', '-i', chd], { encoding: 'utf8' })
+  const tracks = [...info.matchAll(/TRACK:\d+ TYPE:\S+ SUBTYPE:(\S+) FRAMES:(\d+) PREGAP:(\d+) PGTYPE:\S+ PGSUB:\S+ POSTGAP:(\d+)/g)]
+  let frame = 150
+  const starts = tracks.map(([, subtype, frames, pregap, postgap]) => {
+    if (subtype !== 'NONE' || pregap !== '0' || postgap !== '0') throw new Error('Unsupported subtype or pre/postgap')
+    const start = frame
+    frame += Number(frames)
+    return start
+  })
+  if (starts.length > 1) starts.push((starts.pop() as number) + 11400)
+  return starts
 }
 
 let root: string
@@ -160,6 +185,25 @@ describe.skipIf(!enabled)('real chdman and maxcso', () => {
         )
       ])
     )
+    // The same disc with two audio tracks in the first session, the second after 150 frames of pregap that hold sound.
+    await writeFile(
+      join(inputs, 'Mixtape.cdi'),
+      Buffer.concat([
+        Buffer.alloc(150 * 2352),
+        noise.subarray(0, 76 * 2352),
+        noise.subarray(76 * 2352, 302 * 2352),
+        Buffer.alloc(150 * 2336),
+        data,
+        buildCdiDescriptor(
+          [
+            { session: 1, mode: 0, sectorSize: 2352, subchannelSize: 0, pregap: 150, length: 76, start: 0, control: 0 },
+            { session: 1, mode: 0, sectorSize: 2352, subchannelSize: 0, pregap: 150, length: 76, start: 226, control: 0 },
+            { session: 2, mode: 2, sectorSize: 2336, subchannelSize: 0, pregap: 150, length: 400, start: 11702, control: 4 }
+          ],
+          { imageName: 'Mixtape.cdi', volumeId: 'SELFBOOT'.padEnd(32, ' ') }
+        )
+      ])
+    )
   }, 60_000)
 
   afterAll(async () => {
@@ -252,27 +296,10 @@ describe.skipIf(!enabled)('real chdman and maxcso', () => {
 
   it('converts a Dreamcast CD-R between CDI, CHD and BIN/CUE, keeping its data track where Flycast reads it', async () => {
     const cdi = join(inputs, 'Selfboot.cdi')
-    const sha1 = (chd: string): string => /^SHA1:\s+([0-9a-f]{40})$/m.exec(execFileSync(chdman as string, ['info', '-i', chd], { encoding: 'utf8' }))?.[1] ?? ''
     const [chd] = await expectDone(run(cdi, 'CHD', {}, { outputDirectory: join(root, 'selfboot-chd') }))
     expect(execFileSync(chdman as string, ['verify', '-i', chd as string], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] })).toMatch(/verification successful/i)
 
-    // The pregap of the data track is stored in the CHD, as a cue sheet's INDEX 00 has it.
-    const metadata = [...execFileSync(chdman as string, ['info', '-v', '-i', chd as string], { encoding: 'utf8' }).matchAll(/TRACK:\d+ TYPE:(\S+) SUBTYPE:\S+ FRAMES:(\d+) PREGAP:(\d+) PGTYPE:(\S+)/g)]
-    const tracks = metadata.map(([, type, frames, pregap, pgtype]) => ({ type: type as string, frames: Number(frames), pregap: Number(pregap), stored: (pgtype as string).startsWith('V') }))
-    expect(tracks).toEqual([
-      { type: 'AUDIO', frames: 302, pregap: 0, stored: false },
-      { type: 'MODE2', frames: 550, pregap: 150, stored: true }
-    ])
-    // Flycast (core/imgread/chd.cpp) puts INDEX 01 after the pregap, and moves the last track of a disc
-    // that ends with a data track back by the gap between the sessions of a CD-R, less the pregap it has.
-    let frame = 150
-    const starts = tracks.map((track) => {
-      const start = frame + track.pregap
-      frame = start + track.frames - (track.stored ? track.pregap : 0)
-      return start
-    })
-    starts[1] = (starts[1] as number) + 11400 - Math.min(tracks[1]?.pregap ?? 0, 150)
-    expect(starts).toEqual([150, 11702 + 150])
+    expect(flycastStarts(chd as string)).toEqual([150, 11702 + 150])
 
     const [back] = await expectDone(run(chd as string, 'Extract', { extractCd: 'cdi' }, { outputDirectory: join(root, 'selfboot-cdi') }))
     expect((await readFile(back as string)).equals(await readFile(cdi))).toBe(true)
@@ -292,6 +319,29 @@ describe.skipIf(!enabled)('real chdman and maxcso', () => {
 
     const [fromSheet] = await expectDone(run(join(root, 'selfboot-cue', 'Selfboot.cue'), 'CHD', {}, { outputDirectory: join(root, 'selfboot-cue-chd') }))
     expect(sha1(fromSheet as string)).toBe(sha1(chd as string))
+  }, 180_000)
+
+  it("gives the pregaps in a CD-R's first session to the tracks before them", async () => {
+    const cdi = join(inputs, 'Mixtape.cdi')
+    const [chd] = await expectDone(run(cdi, 'CHD', {}, { outputDirectory: join(root, 'mixtape-chd') }))
+    expect(flycastStarts(chd as string)).toEqual([150, 376, 11702 + 150])
+
+    // Extracting the CDI or the CHD gives the same BIN/CUE, and it becomes the same CHD.
+    const fromCdi = await expectDone(run(cdi, 'Extract', {}, { outputDirectory: join(root, 'mixtape-cue') }))
+    const fromChd = await expectDone(run(chd as string, 'Extract', {}, { outputDirectory: join(root, 'mixtape-cue-from-chd') }))
+    expect(await readFile(fromCdi[0] as string, 'utf8')).not.toMatch(/INDEX 00|PREGAP/)
+    expect(fromChd).toHaveLength(4)
+    for (const [i, file] of fromCdi.entries()) expect((await readFile(file)).equals(await readFile(fromChd[i] as string))).toBe(true)
+    const [fromSheet] = await expectDone(run(fromCdi[0] as string, 'CHD', {}, { outputDirectory: join(root, 'mixtape-cue-chd') }))
+    expect(sha1(fromSheet as string)).toBe(sha1(chd as string))
+
+    const [back] = await expectDone(run(chd as string, 'Extract', { extractCd: 'cdi' }, { outputDirectory: join(root, 'mixtape-cdi') }))
+    const { tracks } = await readCdiInfo(back as string)
+    expect(tracks.map((t) => [t.session, t.pregap, t.length, t.start])).toEqual([
+      [1, 150, 226, 0],
+      [1, 0, 76, 376],
+      [2, 150, 400, 11702]
+    ])
   }, 180_000)
 
   it('extracts other discs that end with a data track as chdman does', async () => {
