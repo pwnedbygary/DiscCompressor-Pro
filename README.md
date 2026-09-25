@@ -2,9 +2,9 @@
 
 # DiscCompressor Pro
 
-A fast, good-looking desktop app for converting disc images. It queues up BIN/CUE, GDI, ISO, CHD, CSO, ZSO and DAX files and converts them with
-[chdman](https://docs.mamedev.org/tools/chdman.html) (from MAME) and [maxcso](https://github.com/unknownbrackets/maxcso), showing real progress
-for every job.
+A fast, good-looking desktop app for converting disc images. It queues up BIN/CUE, GDI, CDI, ISO, CHD, CSO, ZSO and DAX files and converts them
+with [chdman](https://docs.mamedev.org/tools/chdman.html) (from MAME) and [maxcso](https://github.com/unknownbrackets/maxcso), showing real
+progress for every job.
 
 ![DiscCompressor Pro working through a queue of disc images](docs/screenshots/main-window.png)
 
@@ -30,14 +30,15 @@ Each release lists SHA-256 checksums in `SHA256SUMS.txt` and includes `DiscCompr
 
 ## What it does
 
-| From                  | To                                                                    |
-| --------------------- | --------------------------------------------------------------------- |
-| BIN/CUE               | CHD; CSO / CSO v2 / ZSO for single-data-track discs                   |
-| GDI                   | CHD (GD-ROM)                                                          |
-| ISO                   | CHD (as CD or DVD), CSO, CSO v2, ZSO                                  |
-| CHD                   | BIN/CUE, GDI or ISO (extract), recompressed CHD, CSO / CSO v2 / ZSO   |
-| CSO / ZSO / DAX       | ISO (extract), CHD, or another CSO format                             |
-| CHD                   | Info and Verify                                                       |
+| From              | To                                                                       |
+| ----------------- | ------------------------------------------------------------------------ |
+| BIN/CUE           | CHD; CSO / CSO v2 / ZSO for single-data-track discs                      |
+| GDI               | CHD (GD-ROM)                                                             |
+| CDI (DiscJuggler) | CHD, BIN/CUE (extract)                                                   |
+| ISO               | CHD (as CD or DVD), CSO, CSO v2, ZSO                                     |
+| CHD               | BIN/CUE, GDI, ISO or CDI (extract), recompressed CHD, CSO / CSO v2 / ZSO |
+| CSO / ZSO / DAX   | ISO (extract), CHD, or another CSO format                                |
+| CHD               | Info and Verify                                                          |
 
 - **A queue you can drive with a mouse or the keyboard.** Drop files or whole folders (images inside are found automatically and track files
   referenced by cue/GDI sheets are not added twice), reorder by dragging, select with Shift/Ctrl or by dragging a rectangle, and edit the
@@ -47,6 +48,9 @@ Each release lists SHA-256 checksums in `SHA256SUMS.txt` and includes `DiscCompr
   audio tracks cannot become an ISO.
 - **Real progress.** chdman's own progress is parsed; maxcso prints none when run by another program, so its progress is measured from the
   bytes it has read. The taskbar shows overall progress and the computer is kept awake while jobs run.
+- **DiscJuggler images, which chdman cannot read.** CDI files (versions 2.0 to 3.5) are read by the app itself and become a CHD or BIN/CUE
+  with every track in place. A Dreamcast CD-R keeps its data track in a second session, which CHD files cannot record: the CHD puts it where
+  Flycast looks for it, the cue sheet marks the sessions, and extracting such a CHD to BIN/CUE or CDI gives the disc its second session back.
 - **Safe by design.** Jobs work in a hidden temporary folder inside the output folder and finished files are moved into place only on
   success, so cancelled or failed jobs leave nothing half-written behind (and anything left by a crash is removed at the next start). An
   input file is never overwritten, jobs never overwrite each other's results, and "delete originals" moves files to the trash — never after
@@ -111,8 +115,8 @@ Chromium, which contain further LGPL code such as parts of Blink, are published 
 
 The code is organised as follows and built with [electron-vite](https://electron-vite.org/):
 
-- `src/main` — the Electron main process: settings, tool discovery, image scanning (CUE/GDI/CHD/CSO parsers), the job planner that turns a
-  job into chdman/maxcso commands, and the runner that executes them.
+- `src/main` — the Electron main process: settings, tool discovery, image scanning (CUE/GDI/CDI/CHD/CSO parsers), the job planner that turns
+  a job into chdman/maxcso commands and the app's own steps (ISO and CDI conversion), and the runner that executes them.
 - `src/preload` — the small, typed bridge the page is allowed to use (context isolation is on, and so is Chromium's sandbox wherever
   the system allows it).
 - `src/renderer` — the React interface, with state in [zustand](https://github.com/pmndrs/zustand) stores and styles in Tailwind CSS.

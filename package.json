@@ -1,7 +1,7 @@
 {
   "name": "disccompressor-pro",
-  "version": "2.1.2",
-  "description": "Convert disc images between BIN/CUE, GDI, ISO, CHD, CSO and ZSO",
+  "version": "2.2.0",
+  "description": "Convert disc images between BIN/CUE, GDI, CDI, ISO, CHD, CSO and ZSO",
   "author": "DiscCompressor",
   "homepage": "https://github.com/pwnedbygary/DiscCompressor-Pro",
   "private": true,

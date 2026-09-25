@@ -78,7 +78,7 @@ linux:
   syncDesktopName: true
   desktop:
     entry:
-      Keywords: disc;image;iso;chd;cso;zso;cue;gdi;convert;compress;
+      Keywords: disc;image;iso;chd;cso;zso;cue;gdi;cdi;convert;compress;
   extraResources:
     # Built statically from source by scripts/build-linux-tools.sh.
     - from: resources/bin/linux-x64
