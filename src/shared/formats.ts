@@ -16,7 +16,8 @@ export const INPUT_EXTENSIONS: Record<string, InputKind> = {
   '.chd': 'chd',
   '.cso': 'cso',
   '.zso': 'zso',
-  '.dax': 'dax'
+  '.dax': 'dax',
+  '.cdi': 'cdi'
 }
 
 export const TARGETS: readonly Target[] = ['CHD', 'CSO', 'CSOv2', 'ZSO', 'Extract', 'Info', 'Verify']
@@ -220,7 +221,7 @@ export function normalizeJobSettings(value: unknown): JobSettings {
     csoBlockSize: block === 0 || (block !== null && isValidCsoBlock(block)) ? block : d.csoBlockSize,
     csoMode: pick(raw.csoMode, ['fast', 'default', 'max', 'custom'], d.csoMode),
     csoMethods: methods.length > 0 ? methods : [...d.csoMethods],
-    extractCd: pick(raw.extractCd, ['cue', 'iso'], d.extractCd),
+    extractCd: pick(raw.extractCd, ['cue', 'iso', 'cdi'], d.extractCd),
     extractGd: pick(raw.extractGd, ['gdi', 'cue'], d.extractGd),
     threads: threads !== null && threads >= 0 && threads <= 1024 ? threads : d.threads
   }
@@ -239,6 +240,7 @@ export interface TargetAvailability {
 const DISC_CHD_MEDIA = new Set(['cd', 'dvd', 'gdrom'])
 
 const GDROM_ISO_REASON = 'GD-ROM images cannot be converted to an ISO-based format'
+export const CDI_ISO_REASON = 'DiscJuggler images can only become a CHD or BIN/CUE'
 
 function isoReason(input: ScannedInput): string | null {
   switch (input.kind) {
@@ -250,6 +252,8 @@ function isoReason(input: ScannedInput): string | null {
       return null
     case 'gdi':
       return GDROM_ISO_REASON
+    case 'cdi':
+      return CDI_ISO_REASON
     case 'chd':
       if (input.chd?.media === 'dvd') return null
       if (input.chd?.media === 'gdrom') return GDROM_ISO_REASON
@@ -273,7 +277,7 @@ function availability(input: ScannedInput, target: Target): string | null {
       return isoReason(input)
     case 'Extract':
       if (input.kind === 'chd') return discChd ? null : 'Only CD, DVD and GD-ROM CHDs can be extracted'
-      return isCompressedKind(input.kind) ? null : 'This image is already uncompressed'
+      return isCompressedKind(input.kind) || input.kind === 'cdi' ? null : 'This image is already uncompressed'
     case 'Info':
       return input.kind === 'chd' ? null : 'Info is only available for CHD files'
     case 'Verify':
@@ -305,15 +309,24 @@ export function defaultTargetFor(input: ScannedInput, preferred: Target): Target
 
 /** Physical media of the CHD a job would create. */
 export function chdMediaFor(input: ScannedInput, settings: JobSettings): Media {
-  if (input.kind === 'cue') return 'cd'
+  if (input.kind === 'cue' || input.kind === 'cdi') return 'cd'
   if (input.kind === 'gdi') return 'gdrom'
   if (input.kind === 'chd' && input.chd && DISC_CHD_MEDIA.has(input.chd.media)) return input.chd.media as Media
   return settings.chdMedia
 }
 
-/** How a CD CHD is extracted: as an ISO when asked for and the disc layout allows it, otherwise as BIN/CUE. */
+/** How a CD CHD is extracted: as asked, except that an ISO needs a disc layout that allows it (BIN/CUE otherwise). */
 export function extractCdFormat(input: ScannedInput, settings: JobSettings): JobSettings['extractCd'] {
-  return settings.extractCd === 'iso' && input.isoLayout ? 'iso' : 'cue'
+  if (settings.extractCd === 'iso') return input.isoLayout ? 'iso' : 'cue'
+  return settings.extractCd
+}
+
+/**
+ * Whether a CD has several tracks and ends with a data track, the shape of a
+ * Dreamcast CD-R (whose data track is in a second session that CHD files do not record).
+ */
+export function endsWithDataTrack(input: ScannedInput): boolean {
+  return input.tracks.length > 1 && input.tracks.at(-1)?.type !== 'AUDIO'
 }
 
 /** Primary output extension of a job, or null when it produces no file. */
@@ -327,10 +340,11 @@ export function outputExtension(input: ScannedInput, target: Target, settings: J
     case 'ZSO':
       return '.zso'
     case 'Extract':
+      if (input.kind === 'cdi') return '.cue'
       if (input.kind !== 'chd') return '.iso'
       if (input.chd?.media === 'dvd') return '.iso'
       if (input.chd?.media === 'gdrom') return settings.extractGd === 'cue' ? '.cue' : '.gdi'
-      return extractCdFormat(input, settings) === 'iso' ? '.iso' : '.cue'
+      return `.${extractCdFormat(input, settings)}`
     case 'Info':
     case 'Verify':
       return null

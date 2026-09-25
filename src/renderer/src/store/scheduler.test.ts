@@ -45,6 +45,7 @@ function input(name: string): ScannedInput {
     isoBlocker: null,
     chd: null,
     ciso: null,
+    cdi: null,
     problem: null
   }
 }

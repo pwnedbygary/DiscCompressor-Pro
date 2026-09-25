@@ -17,6 +17,7 @@ function input(name: string, overrides: Partial<ScannedInput> = {}): ScannedInpu
     isoBlocker: null,
     chd: null,
     ciso: null,
+    cdi: null,
     problem: null,
     ...overrides
   }

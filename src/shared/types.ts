@@ -1,4 +1,4 @@
-export type InputKind = 'cue' | 'gdi' | 'iso' | 'chd' | 'cso' | 'zso' | 'dax'
+export type InputKind = 'cue' | 'gdi' | 'iso' | 'chd' | 'cso' | 'zso' | 'dax' | 'cdi'
 
 /** What a job does. The names match the queue files exported by v1. */
 export type Target = 'CHD' | 'CSO' | 'CSOv2' | 'ZSO' | 'Extract' | 'Info' | 'Verify'
@@ -23,7 +23,7 @@ export interface JobSettings {
   csoBlockSize: number
   csoMode: CsoMode
   csoMethods: CsoMethod[]
-  extractCd: 'cue' | 'iso'
+  extractCd: 'cue' | 'iso' | 'cdi'
   extractGd: 'gdi' | 'cue'
   /** 0 lets the tool use every core. */
   threads: number
@@ -65,6 +65,8 @@ export interface TrackInfo {
   sectorSize: number
   frames?: number
   file?: string
+  /** 1-based, for images that record sessions. */
+  session?: number
 }
 
 /** How a single data track maps onto 2048-byte ISO sectors. */
@@ -90,6 +92,40 @@ export interface CisoInfo {
   blockSize: number
 }
 
+export type CdiVersion = '2.0' | '3.0' | '3.5'
+
+/** A track of a DiscJuggler image. Addresses are frames from 00:00:00 (LBA + 150). */
+export interface CdiTrackInfo {
+  /** 1-based, across the whole disc. */
+  number: number
+  /** 1-based. */
+  session: number
+  /** 0 audio, 1 Mode 1, 2 Mode 2. */
+  mode: 0 | 1 | 2
+  /** Bytes of sector data: 2048, 2336 or 2352. */
+  sectorSize: number
+  /** Bytes of subchannel data stored after each sector: 0 or 96. */
+  subchannelSize: number
+  /** Sectors stored before INDEX 01. */
+  pregap: number
+  /** Sectors from INDEX 01 to the end of the track. */
+  length: number
+  /** Sectors stored in the file, pregap included; at least pregap + length. */
+  stored: number
+  /** Address of the first stored sector, so INDEX 01 is at start + pregap. */
+  start: number
+  /** Byte offset of the first stored sector in the file. */
+  offset: number
+  /** Control flags (4 for data tracks). */
+  control: number
+}
+
+export interface CdiInfo {
+  version: CdiVersion
+  sessions: number
+  tracks: CdiTrackInfo[]
+}
+
 export interface ScannedInput {
   path: string
   name: string
@@ -105,6 +141,7 @@ export interface ScannedInput {
   isoBlocker: string | null
   chd: ChdInfo | null
   ciso: CisoInfo | null
+  cdi: CdiInfo | null
   /** A problem that makes the image unusable, e.g. a missing track file. */
   problem: string | null
 }

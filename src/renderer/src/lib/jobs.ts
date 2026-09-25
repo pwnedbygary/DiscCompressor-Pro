@@ -39,7 +39,8 @@ export const INPUT_LABELS: Record<InputKind, string> = {
   chd: 'CHD',
   cso: 'CSO',
   zso: 'ZSO',
-  dax: 'DAX'
+  dax: 'DAX',
+  cdi: 'CDI'
 }
 
 export const MEDIA_LABELS = { cd: 'CD', dvd: 'DVD', gdrom: 'GD-ROM' } as const
@@ -93,7 +94,7 @@ export function describeOutput(input: ScannedInput, target: Target, settings: Jo
     }
     case 'Extract': {
       const ext = outputExtension(input, target, settings)
-      return ext === '.cue' ? 'BIN/CUE' : ext === '.gdi' ? 'GDI' : 'ISO'
+      return ext === '.cue' ? 'BIN/CUE' : ext === '.gdi' ? 'GDI' : ext === '.cdi' ? 'CDI' : 'ISO'
     }
     case 'Info':
       return 'CHD information'

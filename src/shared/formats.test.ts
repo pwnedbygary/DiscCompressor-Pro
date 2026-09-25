@@ -1,9 +1,13 @@
 import { describe, expect, it } from 'vitest'
 import {
+  CDI_ISO_REASON,
   DEFAULT_JOB_SETTINGS,
+  chdMediaFor,
   csoMethodArgs,
   defaultTargetFor,
   effectiveCsoMethods,
+  endsWithDataTrack,
+  extractCdFormat,
   normalizeJobSettings,
   outputExtension,
   targetAvailability
@@ -23,6 +27,7 @@ function input(overrides: Partial<ScannedInput>): ScannedInput {
     isoBlocker: null,
     chd: null,
     ciso: null,
+    cdi: null,
     problem: null,
     ...overrides
   }
@@ -39,6 +44,19 @@ const cdChd = (tracks: number, blocker: string | null = null): ScannedInput =>
     chd: { version: 5, logicalBytes: 1, hunkBytes: 19584, unitBytes: 2448, codecs: ['cdlz'], media: 'cd', tracks: [], hasParent: false },
     tracks: Array.from({ length: tracks }, (_, i) => ({ number: i + 1, type: 'MODE2_RAW', sectorSize: 2352 }))
   })
+
+const cdi = input({
+  kind: 'cdi',
+  name: 'Game.cdi',
+  path: '/games/Game.cdi',
+  media: 'cd',
+  isoBlocker: CDI_ISO_REASON,
+  tracks: [
+    { number: 1, type: 'AUDIO', sectorSize: 2352, session: 1 },
+    { number: 2, type: 'MODE2/2336', sectorSize: 2336, session: 2 }
+  ],
+  cdi: { version: '3.5', sessions: 2, tracks: [] }
+})
 
 describe('csoMethodArgs', () => {
   it('emits nothing for maxcso defaults', () => {
@@ -124,6 +142,12 @@ describe('targetAvailability', () => {
     expect(allowed(input({ problem: 'Missing track file' }))).toEqual([])
   })
 
+  it('turns DiscJuggler images into CHDs or extracts them', () => {
+    expect(allowed(cdi)).toEqual(['CHD', 'Extract'])
+    expect(targetAvailability(cdi).find((a) => a.target === 'ZSO')?.reason).toBe(CDI_ISO_REASON)
+    expect(defaultTargetFor(cdi, 'ZSO')).toBe('CHD')
+  })
+
   it('does not offer Verify for uncompressed CHDs, which have no checksums', () => {
     const plain = cdChd(1)
     const uncompressed = { ...plain, chd: { ...(plain.chd as NonNullable<ScannedInput['chd']>), codecs: ['none'] } }
@@ -157,5 +181,23 @@ describe('outputExtension', () => {
     expect(outputExtension(input({ kind: 'zso' }), 'Extract', settings)).toBe('.iso')
     expect(outputExtension(input({}), 'ZSO', settings)).toBe('.zso')
     expect(outputExtension(cdChd(1), 'Verify', settings)).toBeNull()
+  })
+
+  it('extracts DiscJuggler images to BIN/CUE and turns CD CHDs into them when asked', () => {
+    const settings = { ...DEFAULT_JOB_SETTINGS, extractCd: 'cdi' as const }
+    expect(outputExtension(cdi, 'Extract', DEFAULT_JOB_SETTINGS)).toBe('.cue')
+    expect(outputExtension(cdi, 'Extract', settings)).toBe('.cue')
+    expect(outputExtension(cdChd(2, 'The disc has audio tracks'), 'Extract', settings)).toBe('.cdi')
+    expect(extractCdFormat(cdChd(1), settings)).toBe('cdi')
+    expect(normalizeJobSettings({ extractCd: 'cdi' }).extractCd).toBe('cdi')
+    expect(chdMediaFor(cdi, { ...DEFAULT_JOB_SETTINGS, chdMedia: 'dvd' })).toBe('cd')
+  })
+})
+
+describe('endsWithDataTrack', () => {
+  it('recognises the track layout of a Dreamcast CD-R', () => {
+    expect(endsWithDataTrack(cdi)).toBe(true)
+    expect(endsWithDataTrack(cdChd(1))).toBe(false)
+    expect(endsWithDataTrack({ ...cdChd(2), tracks: [{ number: 1, type: 'MODE1', sectorSize: 2048 }, { number: 2, type: 'AUDIO', sectorSize: 2352 }] })).toBe(false)
   })
 })
