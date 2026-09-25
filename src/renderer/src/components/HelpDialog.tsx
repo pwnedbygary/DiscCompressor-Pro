@@ -55,7 +55,7 @@ function Formats() {
     <div className="space-y-5">
       <Topic title="CHD — Compressed Hunks of Data">
         <p>
-          MAME&apos;s lossless disc format, also read by many emulators. CD images (BIN/CUE, GDI) are stored with <code>createcd</code>; DVD images with{' '}
+          MAME&apos;s lossless disc format, also read by many emulators. CD images (BIN/CUE, GDI, CDI) are stored with <code>createcd</code>; DVD images with{' '}
           <code>createdvd</code>. For a plain ISO you choose which in the job settings.
         </p>
         <p>
@@ -71,10 +71,20 @@ function Formats() {
         </p>
         <p>Many readers only accept 2,048-byte blocks, which is the default. Larger blocks shrink files by a few percent where they are supported.</p>
       </Topic>
+      <Topic title="CDI — DiscJuggler images">
+        <p>
+          The usual format of Dreamcast games on CD-R, which chdman cannot read. DiscCompressor Pro reads them itself: they become a CHD or a BIN/CUE with
+          every track in place, and a CD CHD can be turned back into a CDI. Subchannel data, which a few images store, is not kept.
+        </p>
+        <p>
+          Such discs keep their data track in a second session, which CHD files cannot record. The converted CHD puts the track where Flycast looks for it,
+          and BIN/CUE marks the sessions in the cue sheet. Extracting a CHD of such a disc to BIN/CUE or CDI gives it its second session back.
+        </p>
+      </Topic>
       <Topic title="Extract">
         <p>
-          Turns CHD back into BIN/CUE, GDI or ISO, and CSO/ZSO/DAX back into ISO. A CD becomes an ISO only if it has a single data track: audio tracks and
-          Mode 2 Form 2 sectors (XA audio and video) cannot be stored in an ISO, so such discs stay BIN/CUE.
+          Turns CHD back into BIN/CUE, GDI, ISO or CDI, CSO/ZSO/DAX back into ISO, and CDI into BIN/CUE. A CD becomes an ISO only if it has a single data
+          track: audio tracks and Mode 2 Form 2 sectors (XA audio and video) cannot be stored in an ISO, so such discs stay BIN/CUE.
         </p>
       </Topic>
       <Topic title="Info and Verify">

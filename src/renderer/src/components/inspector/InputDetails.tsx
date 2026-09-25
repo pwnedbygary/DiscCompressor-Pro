@@ -1,5 +1,5 @@
 import { ChevronRight, FolderOpen } from 'lucide-react'
-import { type ReactNode, useState } from 'react'
+import { Fragment, type ReactNode, useState } from 'react'
 import { openOutput } from '../../actions'
 import { fileName, formatBytes, formatNumber } from '../../lib/format'
 import { INPUT_LABELS, type Job, MEDIA_LABELS } from '../../lib/jobs'
@@ -20,6 +20,7 @@ export function InputDetails({ job }: { job: Job }) {
   const [open, setOpen] = useState(true)
   const { input } = job
   const tracks = input.tracks.slice(0, MAX_TRACKS_SHOWN)
+  const multisession = input.tracks.some((track) => (track.session ?? 1) > 1)
 
   return (
     <section className="rounded-xl border border-line bg-elevated">
@@ -50,14 +51,22 @@ export function InputDetails({ job }: { job: Job }) {
               <Row label="ISO size">{formatBytes(input.ciso.uncompressedBytes)}</Row>
             </>
           )}
+          {input.cdi && (
+            <Row label="Format">
+              DiscJuggler {input.cdi.version} · {input.cdi.sessions} {input.cdi.sessions === 1 ? 'session' : 'sessions'}
+            </Row>
+          )}
           {tracks.length > 0 && (
             <Row label={`Tracks (${input.tracks.length})`}>
               <ul className="space-y-0.5 font-mono text-2xs">
-                {tracks.map((track) => (
-                  <li key={track.number} className="truncate" title={track.file}>
-                    {String(track.number).padStart(2, '0')} {track.type}
-                    {track.sectorSize > 0 && <span className="text-muted"> · {track.sectorSize}</span>}
-                  </li>
+                {tracks.map((track, index) => (
+                  <Fragment key={track.number}>
+                    {multisession && track.session !== tracks[index - 1]?.session && <li className="font-sans text-muted">Session {track.session}</li>}
+                    <li className="truncate" title={track.file}>
+                      {String(track.number).padStart(2, '0')} {track.type}
+                      {track.sectorSize > 0 && <span className="text-muted"> · {track.sectorSize}</span>}
+                    </li>
+                  </Fragment>
                 ))}
                 {input.tracks.length > tracks.length && <li className="text-muted">and {input.tracks.length - tracks.length} more</li>}
               </ul>
