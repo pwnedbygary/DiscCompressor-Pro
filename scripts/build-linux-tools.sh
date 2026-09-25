@@ -11,11 +11,19 @@
 #
 # $DCP_TOOLS_CACHE (default: node_modules/.cache/dcp-tools) keeps the downloads
 # and, in built/, each finished binary with the record of how it was built. A
-# tool is rebuilt from scratch whenever this script, the compiler or one of the
-# linked packages changes. Next to the installed binaries, BUILD-INFO.txt records
-# what they were built from and licenses/ holds the copyright files of the
-# system libraries linked into them.
+# tool is rebuilt from scratch whenever this script, the compiler, binutils or
+# one of the linked packages changes. Next to the installed binaries,
+# BUILD-INFO.txt records what they were built from and licenses/ holds the
+# copyright files of the system libraries linked into them.
+#
+# With --print-toolchain, the script prints those records instead of building,
+# which CI uses in the key of its cache.
 set -euo pipefail
+
+if [[ $# -gt 1 || ($# -eq 1 && $1 != --print-toolchain) ]]; then
+  echo "Usage: $0 [--print-toolchain]" >&2
+  exit 2
+fi
 
 MAME_VERSION=0289
 # The source archive GitHub generates for the release tag. MAME's own source
@@ -46,16 +54,26 @@ for lib in libuv.a liblz4.a libz.a; do
   gcc -print-file-name="$lib" | grep -q / || { echo "Missing static library: $lib" >&2; exit 1; }
 done
 
-mkdir -p "$CACHE" "$BUILD" "$BUILT"
 GCC_MAJOR=$(gcc -dumpversion | cut -d. -f1)
 
-# toolchain PACKAGE... — the compiler and the Debian packages whose static
-# libraries a tool links, as recorded in BUILD-INFO.txt.
+# toolchain PACKAGE... — the compiler, binutils (as, ld and strip) and the Debian
+# packages whose static libraries a tool links, as recorded in BUILD-INFO.txt.
 toolchain() {
   echo "  $(gcc --version | head -n 1)"
+  dpkg-query -W -f '  ${Package} ${Version}\n' binutils || return
   dpkg-query -W -f '  ${Package} ${Version} (source: ${source:Package} ${source:Version})\n' \
     libc6-dev "libstdc++-$GCC_MAJOR-dev" "libgcc-$GCC_MAJOR-dev" "$@"
 }
+
+MAXCSO_PACKAGES=(libuv1-dev liblz4-dev zlib1g-dev)
+CHDMAN_RECORD=$(toolchain)
+MAXCSO_RECORD=$(toolchain "${MAXCSO_PACKAGES[@]}")
+if [[ ${1-} == --print-toolchain ]]; then
+  printf 'chdman:\n%s\nmaxcso:\n%s\n' "$CHDMAN_RECORD" "$MAXCSO_RECORD"
+  exit 0
+fi
+
+mkdir -p "$CACHE" "$BUILD" "$BUILT"
 
 # up_to_date TOOL RECORD — whether TOOL was built by this script with the toolchain in RECORD.
 up_to_date() {
@@ -102,7 +120,6 @@ extract() {
 # --- maxcso -----------------------------------------------------------------
 download "https://github.com/unknownbrackets/maxcso/archive/refs/tags/v$MAXCSO_VERSION.tar.gz" \
   "maxcso-$MAXCSO_VERSION.tar.gz" "$MAXCSO_SHA256"
-MAXCSO_RECORD=$(toolchain libuv1-dev liblz4-dev zlib1g-dev)
 if ! up_to_date maxcso "$MAXCSO_RECORD"; then
   echo "Building maxcso $MAXCSO_VERSION"
   src=$BUILD/maxcso
@@ -112,14 +129,13 @@ if ! up_to_date maxcso "$MAXCSO_RECORD"; then
   # Its `CC ?= gcc` never applies, because make's built-in CC is cc, which may be
   # another compiler such as clang; CC and CXX name the recorded one instead.
   make -C "$src" -j"$JOBS" CC=gcc CXX=g++ CFLAGS="-O2" CXXFLAGS="-O2 -static" maxcso
-  keep maxcso "$src/maxcso" "$MAXCSO_RECORD" libuv1-dev liblz4-dev zlib1g-dev
+  keep maxcso "$src/maxcso" "$MAXCSO_RECORD" "${MAXCSO_PACKAGES[@]}"
   rm -rf "$src"
 fi
 
 # --- chdman -----------------------------------------------------------------
 download "https://github.com/mamedev/mame/archive/refs/tags/mame$MAME_VERSION.tar.gz" \
   "mame$MAME_VERSION.tar.gz" "$MAME_SHA256"
-CHDMAN_RECORD=$(toolchain)
 if ! up_to_date chdman "$CHDMAN_RECORD"; then
   echo "Building chdman 0.${MAME_VERSION#0}"
   # Always a fresh tree, so that no object built with an earlier toolchain is linked in.
@@ -185,9 +201,11 @@ cp "$BUILT"/maxcso/copyright/* "$OUT/licenses/maxcso/"
 {
   echo "chdman and maxcso in this folder were built by scripts/build-linux-tools.sh from the"
   echo "unmodified source releases of MAME 0.${MAME_VERSION#0} (sha256 $MAME_SHA256)"
-  echo "and maxcso $MAXCSO_VERSION (sha256 $MAXCSO_SHA256). They are statically linked with the"
-  echo "system libraries of the packages listed below; the copyright files of those packages"
-  echo "are in licenses/<tool>/, and each release's sources archive contains their source packages."
+  echo "and maxcso $MAXCSO_VERSION (sha256 $MAXCSO_SHA256). Each list below starts with the"
+  echo "compiler and binutils the tool was built with, followed by the packages whose system"
+  echo "libraries are statically linked into it. The copyright files of those packages are in"
+  echo "licenses/<tool>/, and each release's sources archive contains their source packages,"
+  echo "except GCC's runtime libraries, which the GCC Runtime Library Exception covers."
   echo
   echo "chdman was built with:"
   cat "$BUILT/chdman/build-info"

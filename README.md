@@ -84,8 +84,9 @@ Both commands put their output in `release/`:
   e.g. `wine64` and `wine32:i386` on Ubuntu), which NSIS needs to create the uninstaller.
 - `npm run dist:linux` builds the AppImage on x86-64 Debian or Ubuntu. `scripts/build-linux-tools.sh` compiles static chdman and maxcso
   from the official source releases first, which takes a while the first time; it needs the packages `build-essential python3 curl file
-  pkg-config libsdl2-dev libuv1-dev liblz4-dev zlib1g-dev`, and records the Debian packages linked into the tools. The AppImage is packed
-  without the extra libraries electron-builder normally adds, which Electron 44 does not use (`scripts/appimage-tools.mjs`).
+  pkg-config libsdl2-dev libuv1-dev liblz4-dev zlib1g-dev`, and records the compiler and binutils it used and the Debian packages linked
+  into the tools. The AppImage is packed without the extra libraries electron-builder normally adds, which Electron 44 does not use
+  (`scripts/appimage-tools.mjs`).
 - `npm run sources`, after `dist:linux`, writes `release/DiscCompressorPro-<version>-sources.tar` (`scripts/collect-sources.mjs`); it
   needs git.
 

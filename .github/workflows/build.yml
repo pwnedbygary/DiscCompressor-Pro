@@ -35,13 +35,14 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y --no-install-recommends file libsdl2-dev libuv1-dev liblz4-dev zlib1g-dev
       - run: npm ci
       - run: npm run check
-      # The tools are rebuilt whenever the script, the compiler or a linked package changes.
+      # An exact hit is not saved again, so the key covers everything the cached files depend on: the
+      # scripts, and the compiler, binutils and linked packages that the tools are rebuilt for.
       - name: Describe the toolchain
         id: toolchain
         run: |
-          gcc_major=$(gcc -dumpversion | cut -d. -f1)
-          id=$({ gcc --version | head -n 1; dpkg-query -W -f '${Package} ${Version}\n' libc6-dev "libstdc++-$gcc_major-dev" "libgcc-$gcc_major-dev" libuv1-dev liblz4-dev zlib1g-dev; } | sha256sum | cut -c1-16)
-          echo "id=$id" >> "$GITHUB_OUTPUT"
+          record=$(bash scripts/build-linux-tools.sh --print-toolchain)
+          echo "$record"
+          echo "id=$(sha256sum <<<"$record" | cut -c1-16)" >> "$GITHUB_OUTPUT"
       # Restored after `npm ci`, which deletes node_modules. Only downloads and finished binaries are kept.
       - uses: actions/cache@v6
         with:
@@ -49,7 +50,7 @@ jobs:
             node_modules/.cache/dcp-tools/*.tar.gz
             node_modules/.cache/dcp-tools/built
             node_modules/.cache/dcp-tools/sources
-          key: linux-tools-${{ hashFiles('scripts/build-linux-tools.sh') }}-${{ steps.toolchain.outputs.id }}
+          key: linux-tools-${{ hashFiles('scripts/build-linux-tools.sh', 'scripts/collect-sources.mjs', 'scripts/electron-sources.mjs', 'scripts/appimage-tools.mjs') }}-${{ steps.toolchain.outputs.id }}
           restore-keys: linux-tools-
       - name: Build static chdman and maxcso
         run: npm run tools:linux
