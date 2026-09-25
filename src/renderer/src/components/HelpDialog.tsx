@@ -41,6 +41,7 @@ const SHORTCUTS: [string[], string][] = [
   [['↑', '↓'], 'Move the selection (Shift extends it)'],
   [['Alt', '↑ / ↓'], 'Move the selected jobs up or down'],
   [['Ctrl', 'D'], 'Duplicate the selected jobs'],
+  [['Ctrl', 'R'], 'Run the selected jobs again'],
   [['Delete'], 'Remove the selected jobs'],
   [['Esc'], 'Clear the selection'],
   [['Ctrl', 'L'], 'Show or hide the console'],

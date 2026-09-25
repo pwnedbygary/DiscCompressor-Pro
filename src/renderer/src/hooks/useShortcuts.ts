@@ -72,6 +72,9 @@ export function useShortcuts(): void {
       } else if (mod && key === 'd' && selected.length > 0) {
         event.preventDefault()
         queue.duplicate(selected)
+      } else if (mod && key === 'r' && selected.length > 0) {
+        event.preventDefault()
+        queue.reset(selected)
       } else if ((key === 'Delete' || (key === 'Backspace' && mod)) && selected.length > 0) {
         event.preventDefault()
         removeJobs(selected)
