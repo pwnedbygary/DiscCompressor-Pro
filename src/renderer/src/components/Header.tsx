@@ -44,7 +44,7 @@ export function Header() {
   return (
     <header className="flex h-14 shrink-0 items-center gap-3 border-b border-line bg-surface px-4">
       <div className="flex min-w-0 items-center gap-2.5 pr-2">
-        <img src={iconUrl} alt="" className="size-8 rounded-lg shadow-sm" draggable={false} />
+        <img src={iconUrl} alt="" className="size-8 drop-shadow-sm" draggable={false} />
         <div className="min-w-0 leading-tight">
           <div className="truncate text-[14px] font-semibold tracking-tight">DiscCompressor Pro</div>
           <div className="text-2xs text-muted">v{__APP_VERSION__}</div>
