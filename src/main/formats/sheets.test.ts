@@ -3,20 +3,22 @@ import { parseCue } from './cue'
 import { parseGdi } from './gdi'
 
 describe('parseCue', () => {
-  it('parses quoted and unquoted file names, modes and INDEX 01', () => {
+  it('parses quoted and unquoted file names, modes, indices and pregaps', () => {
     const sheet = parseCue(
       '\uFEFFREM GENRE Game\r\nFILE "Game (Track 1).bin" BINARY\r\n  TRACK 01 MODE2/2352\r\n    INDEX 01 00:00:00\r\n' +
-        'FILE track02.bin BINARY\n  TRACK 02 AUDIO\n    INDEX 00 00:00:00\n    INDEX 01 00:02:00\n'
+        'FILE track02.bin BINARY\n  TRACK 02 AUDIO\n    INDEX 00 00:00:00\n    INDEX 01 00:02:00\n' +
+        'FILE track03.bin BINARY\n  TRACK 03 AUDIO\n    PREGAP 00:01:30\n    INDEX 01 00:00:00\n'
     )
     expect(sheet.files).toEqual([
-      { name: 'Game (Track 1).bin', type: 'BINARY', tracks: [{ number: 1, mode: 'MODE2/2352', index1: 0 }] },
-      { name: 'track02.bin', type: 'BINARY', tracks: [{ number: 2, mode: 'AUDIO', index1: 150 }] }
+      { name: 'Game (Track 1).bin', type: 'BINARY', tracks: [{ number: 1, mode: 'MODE2/2352', index0: null, index1: 0, pregap: 0, postgap: 0 }] },
+      { name: 'track02.bin', type: 'BINARY', tracks: [{ number: 2, mode: 'AUDIO', index0: 0, index1: 150, pregap: 0, postgap: 0 }] },
+      { name: 'track03.bin', type: 'BINARY', tracks: [{ number: 3, mode: 'AUDIO', index0: null, index1: 0, pregap: 105, postgap: 0 }] }
     ])
   })
 
   it('is case-insensitive and tolerates unquoted names with spaces', () => {
     const sheet = parseCue('file My Game.iso binary\ntrack 1 mode1/2048\nindex 1 00:00:00')
-    expect(sheet.files[0]).toEqual({ name: 'My Game.iso', type: 'BINARY', tracks: [{ number: 1, mode: 'MODE1/2048', index1: 0 }] })
+    expect(sheet.files[0]).toEqual({ name: 'My Game.iso', type: 'BINARY', tracks: [{ number: 1, mode: 'MODE1/2048', index0: null, index1: 0, pregap: 0, postgap: 0 }] })
   })
 
   it('separates an unquoted name from its type by tabs as well as spaces', () => {
