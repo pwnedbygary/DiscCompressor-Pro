@@ -107,7 +107,7 @@ jobs:
         shell: pwsh
         run: |
           $result = Join-Path $env:RUNNER_TEMP 'self-test.json'
-          $app = Start-Process -FilePath 'release/win-unpacked/DiscCompressor Pro.exe' -ArgumentList "--self-test=$result" -PassThru
+          $app = Start-Process -FilePath 'release/win-unpacked/DiscCompressor Pro.exe' -ArgumentList ('--self-test="{0}"' -f $result) -PassThru
           $null = $app.Handle
           if (-not $app.WaitForExit(120000)) { $app.Kill(); throw 'The app did not exit' }
           Write-Output "Exit code $($app.ExitCode)"

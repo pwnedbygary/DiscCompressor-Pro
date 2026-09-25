@@ -34,11 +34,12 @@ registerAppScheme()
 /**
  * `--self-test=<file>`, used by the release build: check that the packaged app
  * can measure how much a process has read, which maxcso's progress relies on
- * (koffi on Windows), write the result to <file> as JSON and exit.
+ * (koffi on Windows), write the result as JSON to <file>, which must not exist
+ * yet, and exit.
  */
 async function selfTest(file: string): Promise<void> {
   const bytesRead = await processBytesRead(process.pid)
-  await writeFile(file, `${JSON.stringify({ platform: process.platform, arch: process.arch, bytesRead })}\n`)
+  await writeFile(file, `${JSON.stringify({ platform: process.platform, arch: process.arch, bytesRead })}\n`, { flag: 'wx' })
   app.exit(bytesRead === null ? 1 : 0)
 }
 
