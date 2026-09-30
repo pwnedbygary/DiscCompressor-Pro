@@ -8,8 +8,9 @@ progress for every job.
 
 ![DiscCompressor Pro working through a queue of disc images](docs/screenshots/main-window.png)
 
-See the [2.2.2 release notes](docs/releases/2.2.2.md) for what's new, and the [2.1.2 release notes](docs/releases/2.1.2.md) for what changed
-from 1.3.1 to 2.1.2. Both have more screenshots.
+See the [2.3.1 release notes](docs/releases/2.3.1.md) for what's new, the [2.2.2 release notes](docs/releases/2.2.2.md) for DiscJuggler (CDI)
+support and automatic CD or DVD CHDs, and the [2.1.2 release notes](docs/releases/2.1.2.md) for what changed from 1.3.1 to 2.1.2. All three
+have more screenshots.
 
 ## Download
 
