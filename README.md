@@ -29,6 +29,11 @@ use the system's libnotify.
 Each release lists SHA-256 checksums in `SHA256SUMS.txt` and includes `DiscCompressorPro-<version>-sources.tar` with the source code of the
 (L)GPL components of the bundled tools, the AppImage runtime, the installer and Electron's FFmpeg (see [Licences](#licences)).
 
+### Updates
+
+The AppImage carries update information for AppImage tools: AppImageUpdate uses the `.zsync` file published next to it to download only
+the parts that changed, and GearLever uses the same information to find new versions.
+
 ## What it does
 
 | From              | To                                                                       |
@@ -94,12 +99,13 @@ Both commands put their output in `release/`:
 - `npm run dist:linux` builds the AppImage on x86-64 Debian or Ubuntu. `scripts/build-linux-tools.sh` compiles static chdman and maxcso
   from the official source releases first, which takes a while the first time; it needs the packages `build-essential python3 curl file
   pkg-config libsdl2-dev libuv1-dev liblz4-dev zlib1g-dev`, and records the compiler and binutils it used and the Debian packages linked
-  into the tools. The AppImage is packed without the extra libraries electron-builder normally adds, which Electron 44 does not use
-  (`scripts/appimage-tools.mjs`).
+  into the tools. The AppImage is packed without the extra libraries electron-builder normally adds, which Electron 44 does not use, and
+  with the update information that AppImage tools read (`scripts/appimage-tools.mjs`). `scripts/appimage-zsync.mjs` then writes its
+  `.zsync` file, which needs `zsyncmake` (the `zsync` package).
 - `npm run sources`, after `dist:linux`, writes `release/DiscCompressorPro-<version>-sources.tar` (`scripts/collect-sources.mjs`); it
   needs git and GNU tar.
 
-GitHub Actions checks every pull request on Windows and Linux (`.github/workflows/ci.yml`) and builds all four files, including the
+GitHub Actions checks every pull request on Windows and Linux (`.github/workflows/ci.yml`) and builds every release file, including the
 end-to-end tests with the bundled tools (`.github/workflows/build.yml`). For a `v*` tag matching the version in `package.json` it
 creates a draft release with the files and their checksums. Once that version's notes are on `main` in `docs/releases/<version>.md`,
 `.github/workflows/publish-release.yml` publishes the draft with them and deletes drafts of older versions.

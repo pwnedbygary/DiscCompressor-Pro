@@ -31,8 +31,8 @@ jobs:
       - name: Check that a release tag matches the app version
         if: startsWith(github.ref, 'refs/tags/v')
         run: test "${GITHUB_REF_NAME#v}" = "$(node -p "require('./package.json').version")"
-      - name: Install build dependencies for chdman and maxcso
-        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends file libsdl2-dev libuv1-dev liblz4-dev zlib1g-dev
+      - name: Install build dependencies for chdman and maxcso, and zsyncmake for the AppImage's .zsync file
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends file libsdl2-dev libuv1-dev liblz4-dev zlib1g-dev zsync
       - run: npm ci
       - run: npm run check
       # An exact hit is not saved again, so the key covers everything the cached files depend on: the
@@ -61,6 +61,9 @@ jobs:
           DCP_CHDMAN: resources/bin/linux-x64/chdman
           DCP_MAXCSO: resources/bin/linux-x64/maxcso
       - run: npm run dist:linux
+      # AppImage tools look for it on the latest release; upload-artifact only fails when no pattern matches.
+      - name: Check the file that AppImage tools read
+        run: ls release/*.AppImage.zsync
       - name: Collect the sources of the (L)GPL components
         run: npm run sources
       - uses: actions/upload-artifact@v7
@@ -68,6 +71,7 @@ jobs:
           name: linux
           path: |
             release/*.AppImage
+            release/*.AppImage.zsync
             release/*-sources.tar
           if-no-files-found: error
           retention-days: ${{ github.event_name == 'pull_request' && 7 || 30 }}
