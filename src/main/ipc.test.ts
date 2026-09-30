@@ -10,6 +10,7 @@ import { JobEventBatcher, registerIpc, rendererSettingsPatch } from './ipc'
 import type { JobRunner } from './jobs/runner'
 import type { SettingsStore } from './settings'
 import type { ToolRegistry } from './tools'
+import type { Updater } from './updater'
 
 const electron = vi.hoisted(() => ({
   handlers: new Map<string, (...args: unknown[]) => unknown>(),
@@ -35,7 +36,7 @@ vi.mock('electron', () => ({
 /** An event from the main frame of the app's window, showing the app's page. */
 const trustedEvent = (sender = 1, url = 'app://renderer/index.html'): unknown => ({ sender: { id: sender }, senderFrame: { frameTreeNodeId: 7, url } })
 
-function connect(options: { ready?: boolean; settings?: Partial<ReturnType<SettingsStore['get']>>; runner?: Partial<JobRunner> } = {}) {
+function connect(options: { ready?: boolean; settings?: Partial<ReturnType<SettingsStore['get']>>; runner?: Partial<JobRunner>; updater?: Partial<Updater> } = {}) {
   const sent: [string, unknown][] = []
   const window = {
     isDestroyed: () => false,
@@ -46,6 +47,7 @@ function connect(options: { ready?: boolean; settings?: Partial<ReturnType<Setti
     settings: { get: () => options.settings ?? {} } as unknown as SettingsStore,
     tools: {} as ToolRegistry,
     runner: (options.runner ?? {}) as JobRunner,
+    updater: (options.updater ?? {}) as Updater,
     isRendererReady: () => options.ready ?? true,
     onRendererReady: () => undefined,
     onBusyChange: () => undefined
@@ -147,6 +149,22 @@ describe('starting jobs', () => {
     expect(() => invoke(IPC.runJob, { id: 'not a job id', inputPath: '/in/A.iso', target: 'CHD' })).toThrow('Invalid job id')
     expect(() => invoke(IPC.runJob, { id: 'job-3', inputPath: 'A.iso', target: 'CHD' })).toThrow('absolute path')
     expect(start).toHaveBeenCalledTimes(2)
+  })
+})
+
+describe('updates', () => {
+  it('passes the page\'s requests to the updater', async () => {
+    const status = { support: 'install', state: 'available', version: '2.4.0', progress: null, error: null, checkedAt: 1 }
+    const updater = { current: status, check: vi.fn(() => Promise.resolve(status)), download: vi.fn(() => Promise.resolve()), install: vi.fn(() => Promise.resolve()) }
+    const { invoke } = connect({ updater: updater as unknown as Partial<Updater> })
+    expect(invoke(IPC.updateStatus)).toBe(status)
+    expect(await invoke(IPC.checkForUpdates)).toBe(status)
+    await invoke(IPC.downloadUpdate)
+    await invoke(IPC.installUpdate)
+    expect([updater.check, updater.download, updater.install].map((fn) => fn.mock.calls.length)).toEqual([1, 1, 1])
+    // Other pages and frames may not use them.
+    expect(() => electron.handlers.get(IPC.installUpdate)?.(trustedEvent(1, 'https://example.com/'))).toThrow('Untrusted sender')
+    expect(updater.install).toHaveBeenCalledTimes(1)
   })
 })
 

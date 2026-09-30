@@ -11,6 +11,7 @@ import { prefersDark } from '../lib/theme'
 import { useAppSettings, useSettings } from '../store/settings'
 import { toast } from '../store/toasts'
 import { useUi } from '../store/ui'
+import { useUpdates } from '../store/updates'
 import { Button, IconButton } from './ui/Button'
 import { Dialog } from './ui/Dialog'
 import { Segmented, Select, Switch } from './ui/controls'
@@ -138,6 +139,7 @@ export function SettingsDialog() {
   const settings = useAppSettings()
   const { update, tools, refreshTools, detectingTools } = useSettings()
   const platform = api.platform
+  const updateSupport = useUpdates((state) => state.status?.support)
 
   const set = <K extends keyof AppSettings>(key: K, value: AppSettings[K]): void => {
     update({ [key]: value }).catch((error: unknown) => toast('error', 'Could not save the setting', errorMessage(error)))
@@ -224,6 +226,14 @@ export function SettingsDialog() {
             <Switch label="Minimize to tray" checked={settings.minimizeToTray} onChange={(value) => set('minimizeToTray', value)} />
           </Row>
         </Section>
+
+        {updateSupport && updateSupport !== 'none' && (
+          <Section title="Updates">
+            <Row label="Check for updates automatically" description="Looks for a new release on GitHub when the app starts and once a day. Nothing is downloaded until you choose to.">
+              <Switch label="Check for updates" checked={settings.checkForUpdates} onChange={(value) => set('checkForUpdates', value)} />
+            </Row>
+          </Section>
+        )}
 
         <Section
           title="Tools"

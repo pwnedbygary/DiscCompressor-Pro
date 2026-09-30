@@ -2,6 +2,7 @@ import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 
 export type LogFilter = 'all' | 'warn' | 'error'
+export type HelpTab = 'formats' | 'shortcuts' | 'about'
 
 interface UiState {
   logOpen: boolean
@@ -10,6 +11,7 @@ interface UiState {
   inspectorOpen: boolean
   settingsOpen: boolean
   helpOpen: boolean
+  helpTab: HelpTab
   /** Number of folder or file scans in progress. */
   scanning: number
   setLogOpen: (open: boolean) => void
@@ -18,6 +20,7 @@ interface UiState {
   setInspectorOpen: (open: boolean) => void
   setSettingsOpen: (open: boolean) => void
   setHelpOpen: (open: boolean) => void
+  setHelpTab: (tab: HelpTab) => void
   trackScan: <T>(work: Promise<T>) => Promise<T>
 }
 
@@ -30,6 +33,7 @@ export const useUi = create<UiState>()(
       inspectorOpen: true,
       settingsOpen: false,
       helpOpen: false,
+      helpTab: 'formats',
       scanning: 0,
       setLogOpen: (logOpen) => set({ logOpen }),
       setLogHeight: (logHeight) => set({ logHeight: Math.round(logHeight) }),
@@ -37,6 +41,7 @@ export const useUi = create<UiState>()(
       setInspectorOpen: (inspectorOpen) => set({ inspectorOpen }),
       setSettingsOpen: (settingsOpen) => set({ settingsOpen }),
       setHelpOpen: (helpOpen) => set({ helpOpen }),
+      setHelpTab: (helpTab) => set({ helpTab }),
       trackScan: async (work) => {
         set((state) => ({ scanning: state.scanning + 1 }))
         try {

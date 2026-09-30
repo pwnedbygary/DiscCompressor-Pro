@@ -1,15 +1,15 @@
 import { CircleHelp, ExternalLink } from 'lucide-react'
-import { type ReactNode, useState } from 'react'
+import type { ReactNode } from 'react'
+import { REPOSITORY_URL } from '@shared/project'
 import { api } from '../lib/api'
 import { errorMessage } from '../lib/errors'
 import { useSettings } from '../store/settings'
 import { toast } from '../store/toasts'
-import { useUi } from '../store/ui'
+import { type HelpTab, useUi } from '../store/ui'
+import { UpdatesCard } from './Updates'
 import { Button } from './ui/Button'
 import { Dialog } from './ui/Dialog'
 import { Kbd, Segmented } from './ui/controls'
-
-type Tab = 'formats' | 'shortcuts' | 'about'
 
 function Topic({ title, children }: { title: string; children: ReactNode }) {
   return (
@@ -139,13 +139,14 @@ function About() {
           <div>maxcso {tools?.maxcso.version ?? 'not found'}</div>
         </div>
       </div>
+      <UpdatesCard />
       <Topic title="Credits">
         <p>
           chdman is part of <Link href="https://www.mamedev.org/">MAME</Link>. maxcso is written by Unknown W. Brackets —{' '}
           <Link href="https://github.com/unknownbrackets/maxcso">github.com/unknownbrackets/maxcso</Link>.
         </p>
         <p>
-          Report problems or request features at <Link href="https://github.com/pwnedbygary/DiscCompressor-Pro/issues">the project&apos;s issue tracker</Link>.
+          Report problems or request features at <Link href={`${REPOSITORY_URL}/issues`}>the project&apos;s issue tracker</Link>.
         </p>
       </Topic>
     </div>
@@ -155,7 +156,8 @@ function About() {
 export function HelpDialog() {
   const open = useUi((state) => state.helpOpen)
   const setOpen = useUi((state) => state.setHelpOpen)
-  const [tab, setTab] = useState<Tab>('formats')
+  const tab = useUi((state) => state.helpTab)
+  const setTab = useUi((state) => state.setHelpTab)
 
   return (
     <Dialog
@@ -170,7 +172,7 @@ export function HelpDialog() {
         </Button>
       }
     >
-      <Segmented<Tab>
+      <Segmented<HelpTab>
         label="Help topic"
         value={tab}
         onChange={setTab}

@@ -21,6 +21,7 @@ export function defaultSettings(): AppSettings {
     maxConcurrentJobs: 1,
     chdmanPath: '',
     maxcsoPath: '',
+    checkForUpdates: true,
     window: null
   }
 }
@@ -84,6 +85,7 @@ export function sanitizeSettings(value: unknown, base: AppSettings): AppSettings
         : base.maxConcurrentJobs,
     chdmanPath: absolutePathOrEmpty(raw.chdmanPath, base.chdmanPath),
     maxcsoPath: absolutePathOrEmpty(raw.maxcsoPath, base.maxcsoPath),
+    checkForUpdates: bool(raw.checkForUpdates, base.checkForUpdates),
     window: raw.window === undefined ? base.window : windowState(raw.window)
   }
 }

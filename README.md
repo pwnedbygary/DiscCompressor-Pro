@@ -31,8 +31,15 @@ Each release lists SHA-256 checksums in `SHA256SUMS.txt` and includes `DiscCompr
 
 ### Updates
 
-The AppImage carries update information for AppImage tools: AppImageUpdate uses the `.zsync` file published next to it to download only
-the parts that changed, and GearLever uses the same information to find new versions.
+The installed Windows app and the AppImage update themselves. When a new version is out, the status bar says so, and **Help → About**
+downloads it and restarts into it; a downloaded update is also installed when you quit. The portable EXE, and an AppImage in a folder you
+cannot write to, cannot replace themselves, so they link to the release page instead. The app asks GitHub for the latest release when it
+starts and once a day, without an identifier for your copy; turn this off in **Settings → Updates**.
+
+The AppImage also carries update information for AppImage tools: AppImageUpdate uses the `.zsync` file published next to it to download only
+the parts that changed, and GearLever uses the same information to find new versions. When the app updates an AppImage whose file name
+contains the version, the new file gets the new version's name; to keep one name across updates, rename the AppImage without the version,
+e.g. `DiscCompressorPro.AppImage`. A release's `latest.yml` and `latest-linux.yml` are what the app itself reads.
 
 ## What it does
 

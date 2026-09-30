@@ -17,6 +17,7 @@ import type { JobRunner } from './jobs/runner'
 import { scanPaths } from './scan'
 import type { SettingsStore } from './settings'
 import type { ToolRegistry } from './tools'
+import type { Updater } from './updater'
 import { isAppUrl, isExternalLink } from './window'
 
 const EVENT_FLUSH_MS = 100
@@ -29,6 +30,7 @@ export interface IpcDependencies {
   settings: SettingsStore
   tools: ToolRegistry
   runner: JobRunner
+  updater: Updater
   /** Whether the page has registered its listeners (see `rendererReady`). */
   isRendererReady: () => boolean
   onRendererReady: () => void
@@ -128,7 +130,7 @@ export function rendererSettingsPatch(value: unknown): Record<string, unknown> {
 }
 
 export function registerIpc(deps: IpcDependencies): IpcBridge {
-  const { settings, tools, runner } = deps
+  const { settings, tools, runner, updater } = deps
 
   /** Only the main frame of the app's window, showing the app's own page, may use the API. */
   const trusted = (event: IpcMainEvent | IpcMainInvokeEvent): boolean => {
@@ -310,6 +312,11 @@ export function registerIpc(deps: IpcDependencies): IpcBridge {
     if (progress.mode === 'none') window.setProgressBar(-1)
     else window.setProgressBar(Math.min(Math.max(progress.progress, 0), 1), { mode: progress.mode })
   })
+  handle(IPC.updateStatus, () => updater.current)
+  handle(IPC.checkForUpdates, () => updater.check())
+  handle(IPC.downloadUpdate, () => updater.download())
+  handle(IPC.installUpdate, () => updater.install())
+
   on(IPC.busy, (busy) => deps.onBusyChange(busy === true))
   on(IPC.rendererReady, () => deps.onRendererReady())
 

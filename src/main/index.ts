@@ -1,4 +1,4 @@
-import { existsSync, statSync } from 'node:fs'
+import { accessSync, constants, existsSync, statSync } from 'node:fs'
 import { writeFile } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
 import {
@@ -22,6 +22,7 @@ import { inputKindOf } from './scan'
 import { SettingsStore } from './settings'
 import { ToolRegistry } from './tools'
 import { createTray } from './tray'
+import { Updater, updateSupport } from './updater'
 import { createMainWindow } from './window'
 
 app.setName('DiscCompressor Pro')
@@ -43,16 +44,29 @@ async function selfTest(file: string): Promise<void> {
   app.exit(bytesRead === null ? 1 : 0)
 }
 
+/**
+ * Whether this is the only instance. After installing an update, electron-updater
+ * starts the new AppImage (with APPIMAGE_SILENT_INSTALL set) while the old
+ * instance is still quitting, so the new one waits for it to let go.
+ */
+async function singleInstanceLock(): Promise<boolean> {
+  if (app.requestSingleInstanceLock()) return true
+  if (process.env.APPIMAGE_SILENT_INSTALL !== 'true') return false
+  for (let attempt = 0; attempt < 50; attempt += 1) {
+    await new Promise((resolve) => setTimeout(resolve, 100))
+    if (app.requestSingleInstanceLock()) return true
+  }
+  return false
+}
+
 const selfTestFile = process.argv.find((arg) => arg.startsWith('--self-test='))?.slice('--self-test='.length)
 if (selfTestFile) {
   selfTest(selfTestFile).catch((error: unknown) => {
     console.error('Self-test failed', error)
     app.exit(1)
   })
-} else if (!app.requestSingleInstanceLock()) {
-  app.quit()
 } else {
-  void main()
+  void singleInstanceLock().then((only) => (only ? main() : app.quit()))
 }
 
 /** Image files or folders passed on the command line ("Open with", drag onto the executable). */
@@ -110,6 +124,31 @@ async function main(): Promise<void> {
     filesInUse: (query) => ipc?.filesInUse(query) ?? Promise.resolve(null),
     workDirs,
     onActiveChange: () => updateSleepBlocker()
+  })
+
+  const updater = new Updater({
+    support: updateSupport({
+      isPackaged: app.isPackaged,
+      platform: process.platform,
+      env: process.env,
+      execPath: process.execPath,
+      exists: existsSync,
+      canWrite: (dir) => {
+        try {
+          accessSync(dir, constants.W_OK)
+          return true
+        } catch {
+          return false
+        }
+      }
+    }),
+    differential: process.platform === 'linux',
+    load: async () => (await import('electron-updater')).autoUpdater,
+    automatic: () => settings.get().checkForUpdates,
+    busy: () => rendererBusy || runner.activeCount > 0,
+    onChange: (status) => {
+      if (window && !window.isDestroyed()) window.webContents.send(IPC.updateChanged, status)
+    }
   })
 
   const showWindow = (): void => {
@@ -201,6 +240,7 @@ async function main(): Promise<void> {
     settings,
     tools,
     runner,
+    updater,
     isRendererReady: () => rendererReady,
     onRendererReady: () => {
       rendererReady = true
@@ -292,7 +332,9 @@ async function main(): Promise<void> {
   })
 
   updateTray()
+  updater.start()
   settings.onChange((next, previous) => {
     if (next.minimizeToTray !== previous.minimizeToTray) updateTray()
+    if (next.checkForUpdates && !previous.checkForUpdates) updater.checkAutomatically()
   })
 }

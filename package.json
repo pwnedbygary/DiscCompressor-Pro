@@ -25,8 +25,8 @@
     "tools:win": "node scripts/fetch-windows-tools.mjs",
     "tools:linux": "bash scripts/build-linux-tools.sh",
     "notices": "node scripts/generate-notices.mjs",
-    "dist:win": "npm run build && npm run tools:win && npm run notices && electron-builder --win && node scripts/verify-installer-plugins.mjs",
-    "dist:linux": "npm run build && npm run tools:linux && npm run notices && node scripts/appimage-tools.mjs electron-builder --linux && node scripts/appimage-zsync.mjs",
+    "dist:win": "npm run build && npm run tools:win && npm run notices && electron-builder --win --publish never && node scripts/verify-installer-plugins.mjs",
+    "dist:linux": "npm run build && npm run tools:linux && npm run notices && node scripts/appimage-tools.mjs electron-builder --linux --publish never && node scripts/appimage-zsync.mjs",
     "sources": "node scripts/collect-sources.mjs",
     "clean": "node -e \"for (const d of ['out','release']) require('node:fs').rmSync(d, { recursive: true, force: true })\""
   },
@@ -46,6 +46,7 @@
     "clsx": "^2.1.1",
     "electron": "^44.4.5",
     "electron-builder": "^26.16.1",
+    "electron-updater": "6.8.10",
     "electron-vite": "^5.0.0",
     "eslint": "^10.11.0",
     "eslint-plugin-react-hooks": "^7.1.1",

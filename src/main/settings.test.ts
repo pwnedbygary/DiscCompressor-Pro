@@ -40,7 +40,7 @@ describe('sanitizeSettings', () => {
   it('rejects invalid values field by field', () => {
     const base = defaultSettings()
     const result = sanitizeSettings(
-      { outputDirectory: 'relative/path', themeId: 'nope', maxConcurrentJobs: 99, overwrite: 'maybe', chdmanPath: 'chdman', window: { width: 10, height: 10 } },
+      { outputDirectory: 'relative/path', themeId: 'nope', maxConcurrentJobs: 99, overwrite: 'maybe', chdmanPath: 'chdman', checkForUpdates: 'no', window: { width: 10, height: 10 } },
       base
     )
     expect(result).toMatchObject({
@@ -49,8 +49,10 @@ describe('sanitizeSettings', () => {
       maxConcurrentJobs: 1,
       overwrite: 'skip',
       chdmanPath: '',
+      checkForUpdates: true,
       window: null
     })
+    expect(sanitizeSettings({ checkForUpdates: false }, base).checkForUpdates).toBe(false)
   })
 })
 
