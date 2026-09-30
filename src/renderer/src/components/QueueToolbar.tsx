@@ -49,9 +49,10 @@ function ClearButton({ disabled, onConfirm }: { disabled: boolean; onConfirm: ()
 function Chip({ label, value, tone }: { label: string; value: number; tone: string }) {
   if (value === 0) return null
   return (
-    <span className="inline-flex items-center gap-1.5 text-xs text-muted">
+    <span className="inline-flex h-5 shrink-0 items-center gap-1.5 text-xs text-muted" title={`${value} ${label}`}>
       <span className={clsx('size-1.5 rounded-full', tone)} />
-      <span className="font-medium text-fg tabular-nums">{value}</span> {label}
+      <span className="font-medium text-fg tabular-nums">{value}</span>
+      <span className="@max-lg/main:sr-only">{label}</span>
     </span>
   )
 }
@@ -87,32 +88,32 @@ export function QueueToolbar() {
   const clearAll = (): void => removeJobs(useQueue.getState().order)
 
   return (
-    <div className="flex h-11 shrink-0 items-center gap-4 border-b border-line px-4">
-      <div className="flex items-baseline gap-2">
+    <div className="flex h-11 shrink-0 items-center gap-3 border-b border-line px-4 @lg/main:gap-4">
+      <div className="flex shrink-0 items-baseline gap-2">
         <span className="text-[13px] font-semibold">Queue</span>
         <span className="text-xs text-muted tabular-nums">
           {stats.total} {stats.total === 1 ? 'job' : 'jobs'}
         </span>
       </div>
-      <div className="flex items-center gap-3.5">
+      {/* Items that do not fit wrap onto a second line, which is hidden, so they disappear whole, the last ones first. */}
+      <div className="flex h-5 min-w-0 flex-1 flex-wrap items-center gap-x-3 overflow-hidden @lg/main:gap-x-3.5">
+        {scanning && (
+          <span className="inline-flex h-5 shrink-0 items-center gap-1.5 text-xs text-muted">
+            <LoaderCircle className="size-3.5 animate-spin" aria-hidden /> Scanning…
+          </span>
+        )}
         <Chip label="running" value={stats.running} tone="bg-accent animate-pulse" />
+        <Chip label="failed" value={stats.failed} tone="bg-danger" />
         <Chip label="queued" value={stats.queued} tone="bg-muted" />
         <Chip label="done" value={stats.done} tone="bg-success" />
-        <Chip label="failed" value={stats.failed} tone="bg-danger" />
         <Chip label="cancelled" value={stats.cancelled} tone="bg-line-strong" />
+        {stats.saved > 0 && (
+          <span className="hidden h-5 shrink-0 items-center rounded-full bg-success/12 px-2.5 text-xs font-medium text-success-ink tabular-nums @lg/main:inline-flex">
+            {formatBytes(stats.saved)} saved
+          </span>
+        )}
       </div>
-      {scanning && (
-        <span className="inline-flex items-center gap-1.5 text-xs text-muted">
-          <LoaderCircle className="size-3.5 animate-spin" aria-hidden /> Scanning…
-        </span>
-      )}
-      {stats.saved > 0 && (
-        <span className="rounded-full bg-success/12 px-2.5 py-0.5 text-xs font-medium text-success-ink tabular-nums">
-          {formatBytes(stats.saved)} saved
-        </span>
-      )}
-      <div className="flex-1" />
-      <div className="flex items-center gap-0.5">
+      <div className="flex shrink-0 items-center gap-0.5">
         <IconButton icon={CheckCheck} label="Select all" shortcut="Ctrl+A" size="sm" disabled={stats.total === 0} onClick={() => useQueue.getState().selectAll()} />
         <IconButton icon={RotateCcw} label="Retry failed and cancelled jobs" size="sm" disabled={stats.retryable === 0} onClick={retry} />
         <IconButton icon={BrushCleaning} label="Remove finished jobs" size="sm" disabled={stats.done === 0} onClick={() => useQueue.getState().clearFinished()} />

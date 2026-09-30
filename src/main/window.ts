@@ -6,7 +6,8 @@ import { iconPath } from './paths'
 import { APP_HOST, APP_SCHEME, APP_URL } from './protocol'
 
 const DEFAULT_SIZE = { width: 1280, height: 840 }
-const MIN_SIZE = { width: 940, height: 600 }
+/** On Windows and Linux, Electron shrinks a new window to fit its display's work area, but not below this, which fits an 800×600 screen with a panel. */
+const MIN_SIZE = { width: 800, height: 540 }
 
 /** Use saved bounds only if they are still mostly on a connected display. */
 function restoreBounds(state: WindowState | null): Partial<Rectangle> {

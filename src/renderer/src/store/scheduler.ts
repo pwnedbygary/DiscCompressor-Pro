@@ -6,6 +6,7 @@ import { log, useLog } from './log'
 import { getJob, markFailed, markRunning, useQueue } from './queue'
 import { useSettings } from './settings'
 import { toast } from './toasts'
+import { useUi } from './ui'
 
 /** Jobs cancelled by "Stop queue"; they return to the queue instead of being marked cancelled. */
 const stopping = new Set<string>()
@@ -46,6 +47,8 @@ function launch(id: string): void {
   const job = getJob(id)
   if (!job) return
   markRunning(id)
+  // Info's result is the CHD's header, which only the console shows.
+  if (job.target === 'Info') useUi.getState().setLogOpen(true)
   api.runJob({ id, inputPath: job.input.path, target: job.target, settings: job.settings, rerun: job.rerun }).catch((error: unknown) => {
     stopping.delete(id)
     const message = errorMessage(error)
@@ -68,7 +71,7 @@ function finishRun(): void {
     else if (job.status === 'cancelled') cancelled += 1
   }
   if (done + failed + cancelled === 0) {
-    log('warn', 'Queue stopped')
+    log('info', 'Queue stopped')
     return
   }
   const summary = [`${done} finished`, failed > 0 && `${failed} failed`, cancelled > 0 && `${cancelled} cancelled`].filter(Boolean).join(', ')
@@ -135,7 +138,7 @@ export function stopQueue(): void {
     stopping.add(id)
     void api.cancelJob(id)
   }
-  log('warn', active.length > 0 ? 'Stopping the queue…' : 'Queue stopped')
+  log('info', active.length > 0 ? 'Stopping the queue…' : 'Queue stopped')
 }
 
 /** Cancel one running job; it is marked cancelled and the queue moves on. */
@@ -166,7 +169,7 @@ export function handleJobEvents(events: JobEvent[]): void {
       stoppedOne ||= stopping.delete(event.jobId)
     }
   }
-  if (stoppedOne && !useQueue.getState().running && stopping.size === 0 && counts().running === 0) log('warn', 'Queue stopped')
+  if (stoppedOne && !useQueue.getState().running && stopping.size === 0 && counts().running === 0) log('info', 'Queue stopped')
 }
 
 /** Mirror queue activity to the taskbar and the sleep blocker. */

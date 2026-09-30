@@ -1,6 +1,8 @@
+import { clsx } from 'clsx'
 import { CircleHelp, FolderPlus, LoaderCircle, PanelRight, Play, Plus, Settings, Square, SquareTerminal } from 'lucide-react'
 import { pickAndAdd } from '../actions'
 import iconUrl from '../assets/icon-small.png'
+import { unseenLevel, useLog } from '../store/log'
 import { startQueue, stopQueue } from '../store/scheduler'
 import { useQueue } from '../store/queue'
 import { useUi } from '../store/ui'
@@ -35,6 +37,7 @@ function QueueButton() {
 
 export function Header() {
   const logOpen = useUi((state) => state.logOpen)
+  const unseen = useLog((state) => (logOpen ? null : unseenLevel(state)))
   const inspectorOpen = useUi((state) => state.inspectorOpen)
   const setLogOpen = useUi((state) => state.setLogOpen)
   const setInspectorOpen = useUi((state) => state.setInspectorOpen)
@@ -42,7 +45,7 @@ export function Header() {
   const setHelpOpen = useUi((state) => state.setHelpOpen)
 
   return (
-    <header className="flex h-14 shrink-0 items-center gap-3 border-b border-line bg-surface px-4">
+    <header className="flex h-14 shrink-0 items-center gap-2 border-b border-line bg-surface px-4 lg:gap-3">
       <div className="flex min-w-0 items-center gap-2.5 pr-2">
         <img src={iconUrl} alt="" className="size-8 drop-shadow-sm" draggable={false} />
         <div className="min-w-0 leading-tight">
@@ -70,7 +73,22 @@ export function Header() {
 
       <div className="flex items-center gap-0.5">
         <ThemeMenu />
-        <IconButton icon={SquareTerminal} label="Console" shortcut="Ctrl+L" tooltip pressed={logOpen} onClick={() => setLogOpen(!logOpen)} />
+        <span className="relative flex">
+          <IconButton
+            icon={SquareTerminal}
+            label={unseen ? `Console (new ${unseen === 'error' ? 'errors' : 'warnings'})` : 'Console'}
+            shortcut="Ctrl+L"
+            tooltip
+            pressed={logOpen}
+            onClick={() => setLogOpen(!logOpen)}
+          />
+          {unseen && (
+            <span
+              className={clsx('pointer-events-none absolute top-1 right-1 size-2 rounded-full ring-2 ring-surface', unseen === 'error' ? 'bg-danger-ink' : 'bg-warning-ink')}
+              aria-hidden
+            />
+          )}
+        </span>
         <IconButton icon={PanelRight} label="Job settings" shortcut="Ctrl+I" tooltip pressed={inspectorOpen} onClick={() => setInspectorOpen(!inspectorOpen)} />
         <IconButton icon={Settings} label="Settings" shortcut="Ctrl+," tooltip onClick={() => setSettingsOpen(true)} />
         <IconButton icon={CircleHelp} label="Help" shortcut="F1" tooltip onClick={() => setHelpOpen(true)} />
