@@ -5,7 +5,9 @@
  * copy into every AppImage (libappindicator3, libindicator3, libgconf-2,
  * libnotify, libXss, libXtst). Electron 44 does not link or load any of them
  * except libnotify, which it loads from the system when present, and shipping
- * them would add (L)GPL binaries to the release.
+ * them would add (L)GPL binaries to the release. Its x86-64 runtime gets the
+ * update information of appimage-update.mjs, which electron-builder then puts
+ * at the start of the AppImage before it computes the AppImage's checksums.
  *
  * The toolset is downloaded from electron-builder-binaries and verified
  * against the checksum electron-builder 26.16.1 pins for `toolsets.appimage: 1.0.3`.
@@ -14,6 +16,7 @@ import { spawnSync } from 'node:child_process'
 import { mkdir, readFile, readdir, rm, stat, writeFile } from 'node:fs/promises'
 import { basename, dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { UPDATE_INFORMATION, writeUpdateInformation } from './appimage-update.mjs'
 import { describe, fetchWithRetry, sha256, verifyDigest } from './download.mjs'
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..')
@@ -54,6 +57,7 @@ async function prepare() {
     const dir = join(TOOLS, 'lib', arch)
     for (const name of await readdir(dir)) await rm(join(dir, name), { recursive: true, force: true })
   }
+  await writeUpdateInformation(join(TOOLS, 'runtimes', 'runtime-x64'), UPDATE_INFORMATION)
   // Toolsets of other versions would otherwise stay in the cache, and in CI's.
   for (const name of await readdir(CACHE)) {
     if (name.startsWith('appimage-tools-') && name !== ARCHIVE && name !== basename(TOOLS)) {

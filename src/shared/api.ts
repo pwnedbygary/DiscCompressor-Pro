@@ -8,7 +8,8 @@ import type {
   SystemInfo,
   TaskbarProgress,
   ToolName,
-  ToolsStatus
+  ToolsStatus,
+  UpdateStatus
 } from './types'
 
 export const IPC = {
@@ -34,7 +35,12 @@ export const IPC = {
   openExternal: 'shell:open-external',
   taskbarProgress: 'window:taskbar-progress',
   busy: 'app:busy',
-  rendererReady: 'app:renderer-ready'
+  rendererReady: 'app:renderer-ready',
+  updateStatus: 'updates:status',
+  updateChanged: 'updates:changed',
+  checkForUpdates: 'updates:check',
+  downloadUpdate: 'updates:download',
+  installUpdate: 'updates:install'
 } as const
 
 export interface FileFilter {
@@ -85,4 +91,11 @@ export interface DiscApi {
   openExternal(url: string): Promise<void>
   setTaskbarProgress(progress: TaskbarProgress): void
   setBusy(busy: boolean): void
+  getUpdateStatus(): Promise<UpdateStatus>
+  /** Look for a newer release now; resolves with the status once the check is done. */
+  checkForUpdates(): Promise<UpdateStatus>
+  downloadUpdate(): Promise<void>
+  /** Quit, install the downloaded update and start the new version; fails while jobs are running. */
+  installUpdate(): Promise<void>
+  onUpdateStatus(listener: (status: UpdateStatus) => void): () => void
 }

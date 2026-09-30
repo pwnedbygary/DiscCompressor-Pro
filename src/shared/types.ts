@@ -54,7 +54,29 @@ export interface AppSettings {
   maxConcurrentJobs: number
   chdmanPath: string
   maxcsoPath: string
+  /** Look for a new release when the app starts and once a day. */
+  checkForUpdates: boolean
   window: WindowState | null
+}
+
+/**
+ * Updates as the app sees them. `support` says how this copy can be updated:
+ * by the app itself (the Windows installer and the AppImage), only by
+ * downloading the new version (the portable EXE), or not at all (a build run
+ * from source).
+ */
+export interface UpdateStatus {
+  support: 'install' | 'download' | 'none'
+  state: 'idle' | 'checking' | 'up-to-date' | 'available' | 'downloading' | 'downloaded' | 'installing' | 'error'
+  /** The newer version, once one has been found. */
+  version: string | null
+  /** From 0 to 1 while downloading. */
+  progress: number | null
+  error: string | null
+  /** What went wrong, in the error state. */
+  failed: 'check' | 'download' | 'install' | null
+  /** When the last check finished, in milliseconds since the epoch. */
+  checkedAt: number | null
 }
 
 export interface TrackInfo {

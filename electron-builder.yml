@@ -8,8 +8,13 @@ directories:
   buildResources: build
   output: release
 
-# The app has no auto-updater, so no update metadata is generated.
-publish: null
+# The app's updater (electron-updater) reads app-update.yml, which this puts among the app's resources, and
+# the latest.yml (Windows installer) and latest-linux.yml (AppImage) that the build writes next to the
+# installers and the release workflow uploads. electron-builder itself never publishes (--publish never).
+publish:
+  provider: github
+  owner: pwnedbygary
+  repo: DiscCompressor-Pro
 
 files:
   - out/**
@@ -60,7 +65,7 @@ nsis:
   include: build/installer.nsh
   packElevateHelper: false
   allowToChangeInstallationDirectory: true
-  # Without an auto-updater there is no use for a block map, and the app can be compressed as one solid archive.
+  # Updates download the whole installer, so it needs no block map and the app can be compressed as one solid archive.
   differentialPackage: false
   artifactName: DiscCompressorPro-${version}-Setup-${arch}.${ext}
 

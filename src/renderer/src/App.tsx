@@ -15,6 +15,7 @@ import { useShortcuts } from './hooks/useShortcuts'
 import { api } from './lib/api'
 import { filesInUse, handleJobEvents, startQueue, stopQueue, watchActivity, watchScheduler } from './store/scheduler'
 import { useUi } from './store/ui'
+import { watchUpdates } from './store/updates'
 
 export function App() {
   useShortcuts()
@@ -38,7 +39,8 @@ export function App() {
         }
       }),
       watchScheduler(),
-      watchActivity()
+      watchActivity(),
+      watchUpdates()
     ]
     api.rendererReady()
     return () => {

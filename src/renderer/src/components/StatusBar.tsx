@@ -7,6 +7,7 @@ import { displayPath, formatPercent } from '../lib/format'
 import { useQueue } from '../store/queue'
 import { useAppSettings, useSettings } from '../store/settings'
 import { useUi } from '../store/ui'
+import { UpdatePill } from './Updates'
 
 function ToolPill({ status, name }: { status: ToolStatus | undefined; name: string }) {
   const setSettingsOpen = useUi((state) => state.setSettingsOpen)
@@ -57,6 +58,7 @@ export function StatusBar() {
         </button>
       )}
       <div className="flex-1" />
+      <UpdatePill />
       <span className="flex items-center gap-2 px-1.5">
         <span className={clsx('size-1.5 rounded-full', active > 0 ? 'animate-pulse bg-accent' : running ? 'bg-warning' : 'bg-muted')} />
         {active > 0 && !running ? (

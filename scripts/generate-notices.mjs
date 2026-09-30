@@ -88,6 +88,35 @@ The app is built from the open-source packages below.
 // header-only libraries from koffi's vendor/ folder (which has no package.json).
 const KOFFI_VENDORED = { 'node-addon-api': 'MIT', 'node-api-headers': 'MIT' }
 
+// Packages whose releases and repositories have no licence file, only "MIT" in
+// package.json. They get the standard MIT text, naming their author.
+const DECLARED_MIT = new Set(['lazy-val'])
+
+const mitLicense = (holder) => `MIT License
+
+Copyright (c) ${holder}
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.`
+
+/** The author named in a package.json, which is either a string or an object with a name. */
+const authorOf = (pkg) => (typeof pkg.author === 'string' ? pkg.author.replace(/\s*[<(].*$/, '') : pkg.author?.name)
+
 const byCodePoint = (a, b) => (a < b ? -1 : a > b ? 1 : 0)
 
 async function readJson(path) {
@@ -143,6 +172,10 @@ async function main() {
   const sections = []
   for (const { dir, pkg } of packages) {
     const text = await licenseText(dir)
+    if (!text && DECLARED_MIT.has(pkg.name) && pkg.license === 'MIT' && authorOf(pkg)) {
+      sections.push(section(`${pkg.name} ${pkg.version} (MIT, declared in its package.json, which has no licence text)`, mitLicense(authorOf(pkg))))
+      continue
+    }
     if (!text) throw new Error(`No licence file found for ${pkg.name} in ${relative(ROOT, dir).split(sep).join('/')}`)
     sections.push(section(`${pkg.name} ${pkg.version} (${pkg.license ?? 'see below'})`, text))
     if (pkg.name !== 'koffi') continue

@@ -1,6 +1,6 @@
 import { type IpcRendererEvent, contextBridge, ipcRenderer, webUtils } from 'electron'
 import { type DiscApi, IPC } from '@shared/api'
-import type { AppCommand, FilesInUseQuery, FilesInUseReply, JobEvent } from '@shared/types'
+import type { AppCommand, FilesInUseQuery, FilesInUseReply, JobEvent, UpdateStatus } from '@shared/types'
 
 function subscribe<T>(channel: string, listener: (payload: T) => void): () => void {
   const handler = (_event: IpcRendererEvent, payload: T): void => listener(payload)
@@ -45,7 +45,12 @@ const api: DiscApi = {
   openOutputFolder: () => ipcRenderer.invoke(IPC.openOutputFolder),
   openExternal: (url) => ipcRenderer.invoke(IPC.openExternal, url),
   setTaskbarProgress: (progress) => ipcRenderer.send(IPC.taskbarProgress, progress),
-  setBusy: (busy) => ipcRenderer.send(IPC.busy, busy)
+  setBusy: (busy) => ipcRenderer.send(IPC.busy, busy),
+  getUpdateStatus: () => ipcRenderer.invoke(IPC.updateStatus),
+  checkForUpdates: () => ipcRenderer.invoke(IPC.checkForUpdates),
+  downloadUpdate: () => ipcRenderer.invoke(IPC.downloadUpdate),
+  installUpdate: () => ipcRenderer.invoke(IPC.installUpdate),
+  onUpdateStatus: (listener) => subscribe<UpdateStatus>(IPC.updateChanged, listener)
 }
 
 contextBridge.exposeInMainWorld('api', api)
