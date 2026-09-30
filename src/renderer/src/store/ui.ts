@@ -27,7 +27,7 @@ interface UiState {
 export const useUi = create<UiState>()(
   persist(
     (set) => ({
-      logOpen: true,
+      logOpen: false,
       logHeight: 220,
       logFilter: 'all',
       inspectorOpen: true,

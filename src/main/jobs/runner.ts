@@ -308,7 +308,7 @@ export class JobRunner {
     } catch (error) {
       job.finishing = true
       if (signal.aborted) {
-        log('warn', 'Cancelled')
+        log('info', 'Cancelled')
         return { type: 'cancelled', jobId: request.id }
       }
       const message = error instanceof Error ? error.message : String(error)

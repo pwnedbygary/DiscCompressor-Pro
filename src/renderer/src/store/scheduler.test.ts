@@ -1,11 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { DEFAULT_JOB_SETTINGS } from '@shared/formats'
 import type { AppSettings, JobEvent, ScannedInput } from '@shared/types'
-import { useLog } from './log'
+import { unseenLevel, useLog } from './log'
 import { markFailed, useQueue } from './queue'
 import { filesInUse, handleJobEvents, removeJobs, startQueue, stopQueue, watchActivity, watchScheduler } from './scheduler'
 import { useSettings } from './settings'
 import { useToasts } from './toasts'
+import { useUi } from './ui'
 
 const env = vi.hoisted(() => {
   const env = {
@@ -18,7 +19,14 @@ const env = vi.hoisted(() => {
       setTaskbarProgress: vi.fn()
     }
   }
-  vi.stubGlobal('window', { api: env.api })
+  // localStorage is for the UI store, which saves whether the console is open.
+  const stored = new Map<string, string>()
+  const localStorage = {
+    getItem: (key: string) => stored.get(key) ?? null,
+    setItem: (key: string, value: string) => void stored.set(key, value),
+    removeItem: (key: string) => void stored.delete(key)
+  }
+  vi.stubGlobal('window', { api: env.api, localStorage })
   vi.stubGlobal('document', { hasFocus: () => env.focused })
   vi.stubGlobal(
     'Notification',
@@ -112,6 +120,19 @@ describe('running the queue', () => {
     handleJobEvents(['A.iso', 'B.iso', 'C.iso'].map(done))
     await flush()
     expect(messages()).toContain('Queue finished: 3 finished')
+  })
+
+  it('opens the console for an Info job, whose result only the console shows', async () => {
+    useUi.setState({ logOpen: false })
+    removeJobs([idOf('B.iso'), idOf('C.iso')])
+    useQueue.getState().add([{ input: { ...input('D.chd'), kind: 'chd' }, target: 'Info' }], { target: 'CHD', settings: DEFAULT_JOB_SETTINGS })
+    startQueue()
+    expect(launched()).toEqual(['A.iso'])
+    expect(useUi.getState().logOpen).toBe(false)
+    handleJobEvents([done('A.iso')])
+    await flush()
+    expect(launched()).toEqual(['A.iso', 'D.chd'])
+    expect(useUi.getState().logOpen).toBe(true)
   })
 
   it('notifies when the queue finishes in the background', async () => {
@@ -242,6 +263,7 @@ describe('stopping the queue', () => {
     await flush()
     expect([status('A.iso'), status('B.iso'), status('C.iso')]).toEqual(['queued', 'queued', 'queued'])
     expect(messages()).toEqual(['Queue started', 'Stopping the queue…', 'Queue stopped'])
+    expect(unseenLevel(useLog.getState())).toBeNull()
     expect(useToasts.getState().toasts).toEqual([])
     expect(api.setBusy).toHaveBeenLastCalledWith(false)
   })

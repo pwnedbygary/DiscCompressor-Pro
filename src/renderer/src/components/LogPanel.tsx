@@ -73,6 +73,7 @@ function formatEntry(entry: LogEntry): string {
 export function LogPanel() {
   const entries = useLog((state) => state.entries)
   const clear = useLog((state) => state.clear)
+  const markSeen = useLog((state) => state.markSeen)
   const logHeight = useUi((state) => state.logHeight)
   const setLogHeight = useUi((state) => state.setLogHeight)
   const logFilter = useUi((state) => state.logFilter)
@@ -96,6 +97,8 @@ export function LogPanel() {
     overscan: 12,
     getItemKey: (index) => visible[index]?.id ?? index
   })
+
+  useEffect(() => markSeen(), [entries, markSeen])
 
   // Keyed on the newest line rather than the count, which stops changing once the log is full.
   const newestId = visible.at(-1)?.id
