@@ -42,7 +42,7 @@ export function Header() {
   const setHelpOpen = useUi((state) => state.setHelpOpen)
 
   return (
-    <header className="flex h-14 shrink-0 items-center gap-3 border-b border-line bg-surface px-4">
+    <header className="flex h-14 shrink-0 items-center gap-2 border-b border-line bg-surface px-4 lg:gap-3">
       <div className="flex min-w-0 items-center gap-2.5 pr-2">
         <img src={iconUrl} alt="" className="size-8 drop-shadow-sm" draggable={false} />
         <div className="min-w-0 leading-tight">

@@ -91,14 +91,14 @@ export const JobRow = memo(function JobRow({ id, position, total, onDragStartRow
       onDoubleClick={(event) => !isButton(event) && job.outputs[0] && void openOutput(job.outputs[0])}
       style={{ height: ROW_HEIGHT }}
       className={clsx(
-        'group relative flex items-center gap-3 rounded-xl border pr-2 pl-1.5 transition-[background-color,border-color,box-shadow] duration-150',
+        'group relative flex items-center gap-2 rounded-xl border pr-2 pl-1.5 transition-[background-color,border-color,box-shadow] duration-150 @lg:gap-3',
         'outline-offset-2 outline-accent group-focus-visible/list:data-[focused=true]:outline-2',
         selected
           ? 'border-accent/60 bg-accent/[0.08] shadow-[0_0_0_1px] shadow-accent/40'
           : 'border-line bg-elevated hover:border-line-strong'
       )}
     >
-      <GripVertical className="size-4 shrink-0 cursor-grab text-muted/0 transition-colors group-hover:text-muted/70" aria-hidden />
+      <GripVertical className="hidden size-4 shrink-0 cursor-grab text-muted/0 transition-colors group-hover:text-muted/70 @lg:block" aria-hidden />
       <div className={clsx('grid size-9 shrink-0 place-items-center rounded-full', status.className)} title={status.label}>
         <StatusIcon className={clsx('size-[18px]', job.status === 'running' && 'animate-spin')} strokeWidth={2} aria-hidden />
       </div>
@@ -117,14 +117,16 @@ export const JobRow = memo(function JobRow({ id, position, total, onDragStartRow
 
       <span className="hidden shrink-0 rounded-md bg-accent/12 px-2 py-0.5 text-2xs font-semibold text-accent-ink @xl:inline">{TARGET_LABELS[job.target]}</span>
 
-      <div className="w-40 shrink-0 text-xs @3xl:w-64">
+      <div className="w-28 shrink-0 text-xs @lg:w-40 @3xl:w-64">
         {job.status === 'running' && (
           <div className="space-y-1.5">
             <div className="flex items-baseline justify-between gap-2">
-              <span className="truncate text-muted">{job.stage ?? 'Working'}</span>
+              <span className="truncate text-muted" title={job.stage ?? 'Working'}>
+                {job.stage ?? 'Working'}
+              </span>
               <span className="shrink-0 font-medium tabular-nums">
                 {job.progress === null ? '' : formatPercent(job.progress)}
-                {remaining !== null && <span className="font-normal text-muted"> · {formatDuration(remaining)} left</span>}
+                {remaining !== null && <span className="hidden font-normal text-muted @lg:inline"> · {formatDuration(remaining)} left</span>}
               </span>
             </div>
             <ProgressBar value={job.progress} />
